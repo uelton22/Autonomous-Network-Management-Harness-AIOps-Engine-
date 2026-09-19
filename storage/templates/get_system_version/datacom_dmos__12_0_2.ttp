@@ -1,0 +1,9 @@
+<group name="info">
+Firmware version : {{ os_version }}
+Release date     : {{ release_date | ORPHRASE }}
+Active bank      : {{ active_bank }}
+Status           : {{ status | ORPHRASE }}
+</group>
+<group name="info">
+{{ os_version }} {{ state | contains('Active') }}
+</group>

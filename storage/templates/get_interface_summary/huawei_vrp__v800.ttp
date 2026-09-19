@@ -1,0 +1,9 @@
+<group name="interfaces">
+{{ name | exclude("Interface") | exclude(":") }} {{ admin_status }} {{ oper_status }} {{ description | ORPHRASE }}
+</group>
+<group name="interfaces">
+{{ name | exclude("Interface") | exclude(":") }} {{ admin_status }} {{ oper_status }}
+</group>
+<group name="interfaces">
+{{ name }} {{ ip_address }} {{ admin_status }} {{ oper_status }} {{ vpn }}
+</group>

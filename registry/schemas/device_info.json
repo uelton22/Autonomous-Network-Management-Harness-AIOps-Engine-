@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenConfigDeviceInfo",
+  "description": "Schema canônico unificado para informações do sistema e hardware de rede",
+  "type": "object",
+  "required": ["hostname", "vendor", "os_family", "os_version"],
+  "properties": {
+    "hostname": {
+      "type": "string",
+      "description": "Nome do equipamento sem delimitadores de prompt"
+    },
+    "vendor": {
+      "type": "string",
+      "enum": ["huawei", "datacom", "cisco", "juniper", "arista", "generic"],
+      "description": "Fabricante do equipamento de rede"
+    },
+    "model": {
+      "type": "string",
+      "description": "Modelo do chassis ou plataforma de hardware (ex: DM4610, NE40E-X8, ASR9000)"
+    },
+    "os_family": {
+      "type": "string",
+      "enum": ["vrp", "dmos", "ios", "ios-xe", "ios-xr", "junos", "eos"],
+      "description": "Família do sistema operacional de rede"
+    },
+    "os_version": {
+      "type": "string",
+      "description": "Versão completa do firmware ou release do SO"
+    },
+    "patch_version": {
+      "type": "string",
+      "description": "Versão de patch/VRP patch se aplicável"
+    },
+    "serial_number": {
+      "type": "string",
+      "description": "Número de série do chassis principal"
+    },
+    "uptime_seconds": {
+      "type": "integer",
+      "description": "Tempo de atividade do sistema em segundos"
+    },
+    "uptime_str": {
+      "type": "string",
+      "description": "Representação textual amigável do uptime (ex: '42 days, 8 hours, 15 minutes')"
+    }
+  }
+}

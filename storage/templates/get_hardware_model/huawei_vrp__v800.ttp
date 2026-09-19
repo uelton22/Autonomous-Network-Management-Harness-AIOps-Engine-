@@ -1,0 +1,3 @@
+<group name="info">
+{{ chassis_slot }} {{ model }} {{ status }}
+</group>

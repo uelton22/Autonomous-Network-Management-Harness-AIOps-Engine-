@@ -1,0 +1,231 @@
+Arquitetura e Plano de Engenharia: Normalização Multi-Vendor Inteligente com Agentes Distribuídos, MCP e LLM Local
+Este documento estabelece o plano arquitetural, a estratégia de engenharia e as melhores práticas para a modernização da coleta, normalização e análise de equipamentos de rede legados e multi-vendor (Huawei, Datacom, Cisco, Juniper, Arista), substituindo a rigidez de parsers manuais e superando as limitações do NETCONF/YANG através de uma arquitetura híbrida de Agentes, MCP (Model Context Protocol), Skills de Fabricantes e LLMs Locais (Ollama/vLLM).
+
+1. Diagnóstico do Problema e Realidade de Redes (NetOps)
+1.1 A Falácia do NETCONF Universal
+Na teoria das RFCs (RFC 6241 / RFC 7950), NETCONF e YANG deveriam resolver a heterogeneidade. Na prática de ISPs, operadoras e enterprise:
+
+Equipamentos legados (ou firmwares de entrada/distribuição como certas caixas Datacom DmOS, Huawei S-Series antigas, Cisco IOS clássico) sequer possuem subsistema NETCONF habilitado ou suportam apenas subconjuntos incompletos.
+Modelos YANG proprietários dos fabricantes divergem totalmente entre si (o modelo huawei-ifm é completamente diferente de cisco-ios-xe-native e junos-interfaces).
+O suporte a OpenConfig costuma ser instável, incompleto ou degradar a CPU do plano de controle (Control Plane) de caixas legadas durante varreduras intensas.
+1.2 O Desafio dos Grandes Outputs de CLI (O Gargalo das LLMs)
+A ideia de simplesmente injetar a saída crua de display interface ou show interfaces diretamente em uma LLM local enfrenta três barreiras fundamentais:
+
+Saturação de Contexto e Custo Computacional: Em um switch de distribuição ou roteador de borda com centenas de subinterfaces ou portas 10G/100G (ex: Huawei NE40E, Cisco ASR, Datacom DM4370), a saída de interfaces pode ultrapassar 15.000 a 50.000 linhas de texto. Injetar isso em uma LLM local (3B a 14B parâmetros) gera latência inaceitável (minutos por dispositivo) e satura a VRAM/RAM.
+Efeito "Lost in the Middle" e Alucinação: Modelos de linguagem sofrem degradação de atenção ao tentar estruturar listas repetitivas gigantescas em JSON. O modelo inevitavelmente omite interfaces no meio do dump, inventa valores de contadores ou corrompe a sintaxe JSON por estouro de token de geração (max_tokens).
+Determinismo em Redes: Campos críticos como oper_status, ip_address, prefix_received e vlan_id exigem 100% de acurácia matemática. A LLM não pode "adivinhar".
+1.3 A Solução: Arquitetura Híbrida de 3 Níveis (Hybrid Parsing Pipeline)
+Conforme demonstrado no livro Building AI Agents for Network Operations (Capítulo 4, Tabela 4.3), a melhor arquitetura não é escolher entre código puro ou LLM pura, mas combiná-los sinergicamente:
+
+CLI Raw Output
+Pré-Filtragem & Chunking
+Padrão Conhecido: Cache / TTP / TextFSM
+Sintaxe Nova / Desconhecida / Falha
+Geração de Template Automático
+Dispositivo de Rede via SSH
+Distributed Collector Agent Go
+Nível de Parser
+Tier 1: Fast-Path Determinístico < 5ms
+Tier 2: LLM Parsing via MCP & Vendor Skill
+Self-Healing: Compila Regex/TTP e Salva no Cache
+Tier 3: Strict Schema Validation OpenConfig JSON
+Repositório de Estado / Orquestrador de Agentes
+2. Visão Geral da Arquitetura Proposta
+O projeto será estruturado em 4 camadas desacopladas:
+
+Camada de Coleta Distribuída (Distributed Collector Daemon em Go):
+Mantém pools de conexão SSH persistentes/reutilizáveis de alta performance.
+Aplica comandos defensivos (screen-length 0 temporary, terminal length 0, set cli screen-length 0).
+Implementa Pré-filtro e Chunking inteligente (divide outputs em blocos por interface ou entidade antes de qualquer processamento).
+Camada MCP (Model Context Protocol Server):
+Expõe ferramentas padronizadas que conectam agentes de IA à infraestrutura de rede de forma segura e auditável.
+Ferramentas: netops.collect_state, netops.parse_raw_cli, netops.get_device_topology, netops.run_safe_command.
+Motor de Parsing Híbrido & Normalização de Esquema:
+Dicionário universal de esquema JSON alinhado ao padrão OpenConfig (independente de fabricante).
+Fast-path determinístico local + Fallback semântico para LLM Local (Ollama/vLLM com Qwen 2.5 Coder 7B/14B ou Llama 3.3).
+Validação estrita via JSON Schema / Structs fortemente tipadas.
+Camada de Agentes & Skills Especializadas (Agent Harness):
+Vendor Skills: Módulos declarativos que contêm os comandos específicos, dialetos, prompts Few-Shot e peculiaridades de cada fabricante (Huawei VRP, Datacom DmOS, Cisco IOS/XR, Juniper JunOS, Arista EOS).
+Reasoning Loop: Agentes de diagnóstico e auditoria que orquestram investigações multi-passo com memória e evidências estruturadas.
+3. Estratégia para Outputs Grandes (Solução Técnica de Engenharia)
+Para resolver o problema específico levantado de saídas gigantescas de comandos (display interface, show interfaces, display bgp routing-table), aplicaremos a seguinte estratégia:
+
+3.1 Pre-filtering (Otimização de Comandos na Origem)
+Em vez de sempre executar comandos "pesados":
+
+Para visão geral de links: Executar comandos compactos como display interface brief (Huawei), show interfaces brief (Datacom DmOS), show ip interface brief (Cisco).
+Para BGP: Executar display bgp peer ou show ip bgp summary (nunca o dump da tabela completa BGP).
+Para rotas: Coletar apenas rotas sumarizadas ou pesquisar o prefixo sob investigação.
+3.2 Delimiter Chunking (Divisão por Bloco de Interface)
+Quando a coleta detalhada de cada porta for estritamente necessária:
+
+O agente coletor (em Go) lê o arquivo .raw e aplica um separador determinístico por expressão regular baseado no padrão do fabricante.
+Exemplo Huawei: quebra o texto a cada ^(GigabitEthernet|XGigabitEthernet|Eth-Trunk|NULL|LoopBack)
+Exemplo Cisco: quebra a cada ^([A-Za-z]+Ethernet[0-9/.]+|Port-channel)
+Exemplo Juniper: quebra a cada ^(Physical interface:|\s+Logical interface)
+Vantagem: A LLM não recebe um bloco de 50.000 linhas. Se for necessário acionar a LLM, ela recebe chunks de 1 única interface (20 a 40 linhas) ou lotes de 10 interfaces. A taxa de acerto do modelo sobe para 99.9% e o tempo de inferência cai para milissegundos.
+3.3 Self-Healing Parser Pattern (Geração Autônoma de Parsers)
+O agente tenta passar o chunk pelo parser determinístico (cache de regex/TTP).
+Se o parser falhar ou for um equipamento novo (ex: firmware Datacom DmOS versão recente com layout diferente):
+O chunk raw é enviado para a LLM com a Skill do Vendor.
+A LLM extrai o JSON normalizado.
+Passo Avançado (Self-Healing): O agente pede à LLM para gerar uma expressão regular ou template TTP para aquela saída. O template é testado contra o dado raw e salvo no repositório de templates.
+As próximas 1.000 interfaces são processadas pelo template gerado em menos de 10 milissegundos sem gastar um único token da LLM!
+4. Normalização de Dados: Esquema Unificado (OpenConfig-Aligned)
+Todos os fabricantes (Huawei, Datacom, Cisco, Juniper, Arista) serão mapeados para a mesma estrutura de dados canônica em JSON:
+
+4.1 Schema: device_info
+json
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["hostname", "vendor", "os_family", "os_version"],
+  "properties": {
+    "hostname": { "type": "string" },
+    "vendor": { "type": "string", "enum": ["huawei", "datacom", "cisco", "juniper", "arista", "generic"] },
+    "model": { "type": "string" },
+    "os_family": { "type": "string", "enum": ["vrp", "dmos", "ios", "ios-xe", "ios-xr", "junos", "eos"] },
+    "os_version": { "type": "string" },
+    "patch_version": { "type": "string" },
+    "serial_number": { "type": "string" },
+    "uptime_seconds": { "type": "integer" }
+  }
+}
+4.2 Schema: interfaces
+json
+
+{
+  "device": "BORDER-01-NE40E",
+  "collected_at": "2026-09-15T11:00:00Z",
+  "interfaces": [
+    {
+      "name": "100GE0/1/0",
+      "canonical_name": "HundredGigE0/1/0",
+      "type": "ethernetCsmacd",
+      "description": "UPLINK-TRANSITO-OPERADORA-A",
+      "admin_status": "UP",
+      "oper_status": "UP",
+      "speed_bps": 100000000000,
+      "mtu": 9216,
+      "mac_address": "40:7c:7d:1a:2b:3c",
+      "ipv4": [
+        {
+          "address": "198.51.100.2",
+          "prefix_length": 30
+        }
+      ],
+      "ipv6": [
+        {
+          "address": "2001:db8::2",
+          "prefix_length": 64
+        }
+      ],
+      "statistics": {
+        "in_octets": 105829104820,
+        "out_octets": 98201948102,
+        "in_errors": 0,
+        "out_errors": 0,
+        "in_crc_errors": 0,
+        "in_discards": 0
+      }
+    }
+  ]
+}
+4.3 Schema: bgp_summary
+json
+
+{
+  "device": "CORE-01-DM4370",
+  "local_as": 65000,
+  "router_id": "10.255.255.1",
+  "peers": [
+    {
+      "peer_ip": "10.10.10.2",
+      "remote_as": 65001,
+      "peer_group": "IBGP-RR",
+      "state": "Established",
+      "uptime": "42d08h15m",
+      "prefixes_received": 950000,
+      "prefixes_accepted": 950000,
+      "prefixes_advertised": 150
+    }
+  ]
+}
+5. Design das Vendor Skills (Harness & Conhecimento Especializado)
+Cada fabricante terá uma Skill dedicada seguindo a estrutura padrão de Skills (skills/<vendor>/SKILL.md):
+
+
+skills/
+├── network-vendor-huawei/
+│   ├── SKILL.md                  (Dialeto VRP, comandos display, peculiaridades de prompt)
+│   ├── templates/                (Templates de parser e regex para Huawei)
+│   └── examples/                 (Exemplos de inputs e saídas esperadas)
+├── network-vendor-datacom/
+│   ├── SKILL.md                  (Dialeto DmOS, comandos show, modos de configuração)
+│   ├── templates/
+│   └── examples/
+├── network-vendor-cisco/
+│   ├── SKILL.md                  (Dialeto IOS, IOS-XE, IOS-XR, NX-OS)
+│   ├── templates/
+│   └── examples/
+└── network-vendor-juniper/
+    ├── SKILL.md                  (Dialeto JunOS, comandos show | display)
+    ├── templates/
+    └── examples/
+Exemplo de Conteúdo de uma Skill (Huawei VRP):
+Comandos de Inicialização: screen-length 0 temporary
+Comando Device Info: display version
+Comando Interface: display interface brief, display interface <name>
+Comando BGP: display bgp peer
+Tratamento de Exceções: Tratamento do caractere --More--, detecção de prompt [~HUAWEI] vs <HUAWEI>, distinção de status Administratively DOWN vs DOWN.
+6. Servidor MCP de Operações de Rede (NetOps MCP Server)
+O MCP (Model Context Protocol) desacopla as ferramentas seguras de rede para que qualquer cliente/agente possa consumi-las.
+
+6.1 Catálogo de Ferramentas MCP
+netops_list_inventory: Retorna dispositivos gerenciados, IPs de gerência, vendor e tags.
+netops_collect_raw_command: Executa comando read-only restrito via SSH e armazena o output .raw em disco, retornando o identificador do arquivo e metadados.
+netops_parse_command: Executa o pipeline de normalização (Tier 1 -> Tier 2 -> Tier 3) para uma saída .raw ou bloco de texto, devolvendo o JSON padronizado.
+netops_get_normalized_telemetry: Retorna o estado normalizado de interfaces, BGP ou sistema de um equipamento (executa coleta + parsing em lote).
+netops_generate_parser_template: Utiliza a LLM para sintetizar uma regra de extração determinística a partir de um output não reconhecido.
+7. Escolha e Otimização da LLM Local
+Para garantir soberania de dados, baixa latência e custo zero de API externa:
+
+7.1 Modelos Recomendados para Ollama / vLLM
+Qwen 2.5 Coder 7B / 14B (Instruct): O modelo com melhor relação densidade/acurácia para geração estrita de JSON e parsing de texto técnico de redes.
+DeepSeek-R1-Distill-Qwen-7B / 14B: Excelente para raciocínio diagnóstico e correlação de falhas complexas em logs de rede.
+Llama 3.3 70B (se houver GPU dedicada ou servidor central) ou Llama 3.2 3B (para nós distribuídos na ponta).
+7.2 Structured Outputs (JSON Schema Mode)
+Ao consultar o Ollama, o agente utilizará a flag nativa de JSON Schema (format: schema), garantindo que a LLM jamais retorne blocos de texto conversacional ou JSON malformado.
+
+8. User Review Required
+IMPORTANT
+
+Decisões Estruturais Necessárias:
+
+Coletor SSH Existente em Go: Deseja manter o agente coletor distribuído em Go (expondo gRPC/HTTP ou uma ferramenta CLI que o servidor MCP orquestra) ou prefere migrar toda a pilha do coletor para Python com scrapli/netmiko? (Recomendação: Manter Go para SSH concorrente de alto throughput e usar Python para o servidor MCP/LLM/Agente).
+Infraestrutura da LLM Local: Qual é o hardware disponível para execução local? (ex: Servidor com GPU NVIDIA, Mac Apple Silicon com M-Series, ou máquinas apenas CPU com Ollama?).
+9. Plano de Implementação em Fases
+Fase 1: Arquitetura de Normalização & Schemas (Fundação)
+ Definir e versionar os JSON Schemas OpenConfig-like (device_info.json, interface.json, bgp_summary.json, route_summary.json).
+ Implementar validador de schema com Pydantic / Go Structs.
+ Desenhar o algoritmo de Chunking por Delimitador para saídas de comandos grandes de Huawei, Datacom, Cisco e Juniper.
+Fase 2: Vendor Skills & Engenharia de Prompts
+ Criar o catálogo de Skills para Huawei VRP, Datacom DmOS, Cisco IOS-XE/XR e Juniper JunOS.
+ Montar Few-Shot prompts usando o framework RACE (Role, Anchors, Context, Expected output) para cada fabricante.
+ Implementar testes unitários com amostras reais de saídas de CLI salvas no repositório.
+Fase 3: Servidor MCP & Pipeline Híbrido
+ Implementar o Servidor MCP (mcp_netops_server) em Python ou Go com ferramentas seguras e read-only.
+ Integrar conexão local com Ollama (Qwen 2.5 Coder / Llama 3.2) com modo JSON forçado.
+ Implementar o mecanismo de fallback: TTP/Regex -> LLM Chunk Parser -> Auto-gerador de templates.
+Fase 4: Agente Orquestrador & Harness
+ Construir o loop de raciocínio do Agente de Operações de Rede com memória e registro de evidências.
+ Validar a integridade end-to-end com dispositivos reais ou dumps reais de Huawei, Datacom e Cisco.
+10. Plano de Verificação
+Testes Automatizados
+Testes de Parsing por Fabricante: Executar suite de testes com 10 dumps representativos de cada vendor (Huawei, Datacom, Cisco, Juniper) e validar 100% de conformidade com o JSON Schema.
+Teste de Estresse de Volume: Alimentar o pipeline com um dump de 1.000 interfaces (display interface de 25.000 linhas) e comprovar:
+Tempo de resposta < 5 segundos via chunking/híbrido.
+Zero estouro de memória da LLM.
+100% das interfaces capturadas sem perda de dados.
+Verificação MCP: Testar chamadas às ferramentas MCP via cliente de teste local.

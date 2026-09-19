@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "netops-ssh-mcp": {
+      "command": "/Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/.venv/bin/python",
+      "args": ["-m", "mcp_server.server"],
+      "env": {
+        "PYTHONPATH": "/Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project",
+        "NETOPS_STORAGE_DIR": "/Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/storage"
+      }
+    }
+  }
+}

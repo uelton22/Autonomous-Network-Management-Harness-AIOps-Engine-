@@ -1,0 +1,3 @@
+<group name="peers">
+{{ peer_ip }} {{ version }} {{ remote_as }} {{ msg_rcvd }} {{ msg_sent }} {{ tbl_ver }} {{ in_q }} {{ out_q }} {{ uptime }} {{ prefixes_received }}
+</group>

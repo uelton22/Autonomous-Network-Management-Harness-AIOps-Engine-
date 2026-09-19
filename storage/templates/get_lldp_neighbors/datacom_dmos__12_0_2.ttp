@@ -1,0 +1,6 @@
+<group name="neighbors">
+{{ local_interface | exclude('LOCAL') }}  {{ neighbor_id }}  {{ chassis_subtype }}  {{ chassis_id }}  {{ system_name }}  {{ system_description | ORPHRASE }}  {{ caps_supp }}  {{ caps_en }}  {{ port_subtype }}  {{ port_id }}  {{ port_description | ORPHRASE }}
+</group>
+<group name="neighbors">
+{{ local_interface | exclude('LOCAL') }}  {{ neighbor_id }}  {{ chassis_subtype }}  {{ chassis_id }}  {{ system_name }}  {{ port_id }}  {{ port_description | ORPHRASE }}
+</group>

@@ -1,0 +1,188 @@
+version: "1.0"
+description: "Catálogo Canônico Multi-Vendor de Ações Atômicas e Workflows DAG para Redes"
+
+# -------------------------------------------------------------------------
+# AÇÕES ATÔMICAS (Comandos Granulares Independentes)
+# -------------------------------------------------------------------------
+atomic_actions:
+  get_system_version:
+    description: "Coleta versão de firmware/software e sistema operacional"
+    schema: "registry/schemas/device_info.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show firmware"
+        clean_pager: "terminal length 0"
+        note: "Datacom DmOS reporta firmware através de show firmware ou show platform"
+      huawei_vrp:
+        command: "display version"
+        clean_pager: "screen-length 0 temporary"
+        note: "Huawei VRP reporta VRP software version e uptime em display version"
+      cisco_iosxe:
+        command: "show version"
+        clean_pager: "terminal length 0"
+
+  get_hardware_model:
+    description: "Coleta modelo de hardware, chassis, número de série e placas"
+    schema: "registry/schemas/device_info.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show platform | include DM"
+        clean_pager: "terminal length 0"
+        fallback_command: "show platform"
+      huawei_vrp:
+        command: "display device"
+        clean_pager: "screen-length 0 temporary"
+        fallback_command: "display elabel"
+      cisco_iosxe:
+        command: "show inventory"
+        clean_pager: "terminal length 0"
+
+  get_system_uptime:
+    description: "Coleta tempo de atividade e recursos do sistema"
+    schema: "registry/schemas/device_info.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show system uptime"
+        clean_pager: "terminal length 0"
+        fallback_command: "show system"
+      huawei_vrp:
+        command: "display version"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show version"
+        clean_pager: "terminal length 0"
+
+  get_interface_summary:
+    description: "Resumo compacto do status das interfaces físicas e lógicas"
+    schema: "registry/schemas/interfaces.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show interface link"
+        clean_pager: "terminal length 0"
+      huawei_vrp:
+        command: "display interface description"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show ip interface brief"
+        clean_pager: "terminal length 0"
+
+  get_interface_detail:
+    description: "Coleta detalhes, contadores de erro e estatísticas de uma interface específica"
+    schema: "registry/schemas/interfaces.json"
+    privilege: "read"
+    parameters:
+      interface_name:
+        type: "string"
+        description: "Nome da interface no padrão do fabricante (ex: GE1/0/2 ou 1/1/1)"
+        required: true
+    platforms:
+      datacom_dmos:
+        command: "show interface {interface_name}"
+        clean_pager: "terminal length 0"
+      huawei_vrp:
+        command: "display interface {interface_name}"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show interface {interface_name}"
+        clean_pager: "terminal length 0"
+
+  get_bgp_summary:
+    description: "Resumo de vizinhança BGP, estados e contagem de prefixos"
+    schema: "registry/schemas/bgp_summary.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show ip bgp summary"
+        clean_pager: "terminal length 0"
+      huawei_vrp:
+        command: "display bgp peer"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show ip bgp summary"
+        clean_pager: "terminal length 0"
+
+  get_lldp_neighbors:
+    description: "Descoberta de vizinhos de enlace camada 2 via LLDP (Link Layer Discovery Protocol)"
+    schema: "registry/schemas/lldp_neighbors.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show lldp neighbors detail"
+        clean_pager: "terminal length 0"
+        fallback_command: "show lldp neighbors"
+      huawei_vrp:
+        command: "display lldp neighbor brief"
+        clean_pager: "screen-length 0 temporary"
+        fallback_command: "display lldp neighbor"
+      cisco_iosxe:
+        command: "show lldp neighbors detail"
+        clean_pager: "terminal length 0"
+        fallback_command: "show lldp neighbors"
+
+# -------------------------------------------------------------------------
+# WORKFLOWS ORQUESTRADOS (DAGs de Comandos Dependentes e Agregação Canônica)
+# -------------------------------------------------------------------------
+workflows:
+  diagnose_down_interfaces:
+    description: "Identifica interfaces caídas via brief e coleta detalhes de erro de forma granular"
+    privilege: "read"
+    steps:
+      - step: 1
+        name: "collect_summary"
+        description: "Executa coleta rápida de status de todas as interfaces"
+        action: "get_interface_summary"
+        output_var: "summary_result"
+
+      - step: 2
+        name: "filter_down"
+        description: "Filtro determinístico em código local (zero tokens LLM)"
+        type: "code_filter"
+        source: "summary_result.interfaces"
+        condition: "item['oper_status'] == 'DOWN' or item['admin_status'] == 'DOWN'"
+        output_var: "down_interfaces"
+
+      - step: 3
+        name: "collect_details"
+        description: "Loop batch de coleta específica apenas nas interfaces afetadas"
+        type: "batch_loop"
+        foreach: "down_interfaces"
+        action: "get_interface_detail"
+        args:
+          interface_name: "item['name']"
+        output_var: "detailed_results"
+
+      - step: 4
+        name: "aggregate_openconfig"
+        description: "Agrega resumo e detalhes em um único schema canônico"
+        type: "aggregator"
+        schema: "registry/schemas/interfaces.json"
+        merge:
+          base: "summary_result"
+          details: "detailed_results"
+        output_var: "final_payload"
+
+  diagnose_bgp_flapping:
+    description: "Audita peers BGP que não estão em Established e coleta rotas recebidas"
+    privilege: "read"
+    steps:
+      - step: 1
+        name: "collect_bgp_summary"
+        action: "get_bgp_summary"
+        output_var: "bgp_result"
+
+      - step: 2
+        name: "filter_abnormal_peers"
+        type: "code_filter"
+        source: "bgp_result.peers"
+        condition: "item['state'] != 'Established' or item.get('prefixes_received', 0) == 0"
+        output_var: "abnormal_peers"
+
+      - step: 3
+        name: "aggregate_openconfig"
+        type: "aggregator"
+        schema: "registry/schemas/bgp_summary.json"
+        output_var: "final_payload"
