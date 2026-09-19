@@ -123,6 +123,23 @@ atomic_actions:
         clean_pager: "terminal length 0"
         fallback_command: "show lldp neighbors"
 
+  get_link_aggregation:
+    description: "Coleta grupos de agregação de link (LAG / LACP / Eth-Trunk) e interfaces membro"
+    schema: "registry/schemas/link_aggregation.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show interface link"
+        clean_pager: "terminal length 0"
+        fallback_command: "show link-aggregation interfaces"
+      huawei_vrp:
+        command: "display eth-trunk"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show etherchannel summary"
+        clean_pager: "terminal length 0"
+
+
 # -------------------------------------------------------------------------
 # WORKFLOWS ORQUESTRADOS (DAGs de Comandos Dependentes e Agregação Canônica)
 # -------------------------------------------------------------------------

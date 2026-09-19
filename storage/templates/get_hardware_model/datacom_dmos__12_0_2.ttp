@@ -1,0 +1,16 @@
+<group name="info">
+{{ chassis_slot | exclude('-') }} {{ model }} - - {{ fw | ORPHRASE }}
+</group>
+<group name="info">
+{{ chassis_slot | exclude('-') }} {{ model }} {{ role }} {{ status }} {{ fw | ORPHRASE }}
+</group>
+<group name="info">
+ Product model       : {{ model }}
+</group>
+<group name="info">
+   Part number       : {{ part_number }}
+   Serial number     : {{ serial_number }}
+   Product revision  : {{ product_revision }}
+   PCB revision      : {{ pcb_revision }}
+   Hardware version  : {{ hardware_version }}
+</group>

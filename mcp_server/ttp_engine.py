@@ -100,6 +100,38 @@ class LLDPNeighborsSchema(BaseModel):
     collected_at: Optional[str] = None
 
 
+class LagMemberItem(BaseModel):
+    interface: str
+    oper_status: str = "UNKNOWN"
+    aggregation_status: str = "active"
+    lacp_status: Optional[str] = None
+
+
+class LagItem(BaseModel):
+    lag_id: str
+    name: str
+    oper_status: str = "UNKNOWN"
+    admin_status: Optional[str] = "UP"
+    mode: Optional[str] = "UNKNOWN"
+    description: Optional[str] = None
+    members: List[LagMemberItem] = Field(default_factory=list)
+
+
+class LagSummaryStats(BaseModel):
+    total_lags: int = 0
+    active_lags: int = 0
+    down_lags: int = 0
+    total_members: int = 0
+    active_members: int = 0
+
+
+class LinkAggregationSchema(BaseModel):
+    device: str
+    summary: Optional[LagSummaryStats] = None
+    link_aggregations: List[LagItem] = Field(default_factory=list)
+    collected_at: Optional[str] = None
+
+
 ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
     "get_system_version": DeviceInfoSchema,
     "get_hardware_model": DeviceInfoSchema,
@@ -108,7 +140,9 @@ ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
     "get_interface_detail": InterfaceDetailItem,
     "get_bgp_summary": BgpSummarySchema,
     "get_lldp_neighbors": LLDPNeighborsSchema,
+    "get_link_aggregation": LinkAggregationSchema,
 }
+
 
 
 # -------------------------------------------------------------------------
@@ -305,7 +339,46 @@ Last link flapped: {{ last_flapped | ORPHRASE }}
 </group>
 """
 
+    elif action == "get_link_aggregation":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="aggregations">
+{{ lag_id | DIGIT }} {{ interface }} {{ oper_status }} {{ aggregation_status }} {{ lacp_status }}
+</group>
+<group name="aggregations">
+  {{ interface }} {{ oper_status }} {{ aggregation_status }} {{ lacp_status }}
+</group>
+<group name="aggregations">
+{{ interface | exclude('ID') }}    {{ oper_status }}    {{ shutdown }}     {{ speed }}     {{ duplex }}    {{ disabled_by }}         {{ blocked_by }}        lag-{{ lag_id | DIGIT }}   {{ description | ORPHRASE }}
+</group>
+<group name="aggregations">
+{{ interface | exclude('ID') }}    {{ oper_status }}    {{ shutdown }}     {{ speed }}     {{ duplex }}    {{ disabled_by }}         {{ blocked_by }}        lag-{{ lag_id | DIGIT }}
+</group>
+<group name="aggregations">
+{{ lag_id | DIGIT }} {{ oper_status }} {{ mode }} {{ snmp_ifindex }} {{ description | ORPHRASE }}
+</group>
+<group name="aggregations">
+{{ lag_id | DIGIT }} {{ oper_status }} {{ mode }} {{ snmp_ifindex }}
+</group>
+"""
+
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="aggregations">
+Eth-Trunk{{ lag_id | DIGIT }}'s state information is:
+WorkingMode: {{ mode }}
+Operate status: {{ oper_status }}
+<group name="members">
+{{ interface }}  {{ port_status }}  {{ weight }}
+</group>
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="aggregations">
+{{ lag_id | DIGIT }}  Po{{ port_channel_id }}({{ oper_status }})  {{ protocol }}  {{ members | ORPHRASE }}
+</group>
+"""
+
     return "<group name=\"data\">\n{{ line | ORPHRASE }}\n</group>\n"
+
 
 
 # -------------------------------------------------------------------------
@@ -361,7 +434,7 @@ class TTPHybridEngine:
                 flat = flat[0]
 
             if isinstance(flat, dict):
-                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "data"):
+                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "aggregations", "data"):
                     if group_key in flat:
                         val = flat[group_key]
                         return val if isinstance(val, list) else [val]
@@ -719,6 +792,85 @@ REGRAS ESTREITAS:
                 "device": device_hostname,
                 "neighbors": neighbors
             }
+
+        elif action == "get_link_aggregation":
+            lag_map: Dict[str, Dict[str, Any]] = {}
+            current_lag_id: Optional[str] = None
+
+            for r in records:
+                if not isinstance(r, dict):
+                    continue
+                lag_id = r.get("lag_id")
+                if lag_id and str(lag_id).strip():
+                    current_lag_id = str(lag_id).strip()
+                elif current_lag_id:
+                    lag_id = current_lag_id
+
+                if not lag_id:
+                    continue
+
+                lag_id_str = str(lag_id).strip()
+                if lag_id_str not in lag_map:
+                    lag_name = lag_id_str
+                    if not lag_name.lower().startswith("eth-trunk") and not lag_name.lower().startswith("po") and not lag_name.lower().startswith("lag"):
+                        lag_name = f"lag {lag_name}"
+
+                    lag_map[lag_id_str] = {
+                        "lag_id": lag_id_str,
+                        "name": lag_name,
+                        "oper_status": "UP",
+                        "admin_status": "UP",
+                        "mode": r.get("mode") or "LACP",
+                        "description": r.get("description"),
+                        "members": []
+                    }
+
+                iface = (r.get("interface") or "").strip()
+                if iface and iface not in ("Interface", "Name", "ID", "Interface Name") and not iface.startswith("-"):
+                    op_stat = (r.get("oper_status") or "UP").upper()
+                    if "UP" in op_stat:
+                        op_stat = "UP"
+                    elif "DOWN" in op_stat:
+                        op_stat = "DOWN"
+                    else:
+                        op_stat = "UNKNOWN"
+
+                    agg_stat = (r.get("aggregation_status") or "active").strip().lower()
+                    lacp_stat = r.get("lacp_status")
+
+                    lag_map[lag_id_str]["members"].append({
+                        "interface": iface,
+                        "oper_status": op_stat,
+                        "aggregation_status": agg_stat,
+                        "lacp_status": lacp_stat
+                    })
+
+            lags_list = []
+            total_members = 0
+            active_members = 0
+            for lag_entry in lag_map.values():
+                m_list = lag_entry["members"]
+                total_members += len(m_list)
+                up_m = [m for m in m_list if m["oper_status"] == "UP" and m["aggregation_status"] == "active"]
+                active_members += len(up_m)
+                lag_entry["oper_status"] = "UP" if len(up_m) > 0 else ("DOWN" if m_list else lag_entry.get("oper_status", "DOWN"))
+                lags_list.append(lag_entry)
+
+            summary = {
+                "total_lags": len(lags_list),
+                "active_lags": sum(1 for l in lags_list if l["oper_status"] == "UP"),
+                "down_lags": sum(1 for l in lags_list if l["oper_status"] == "DOWN"),
+                "total_members": total_members,
+                "active_members": active_members
+            }
+
+            return {
+                "device": device_hostname,
+                "summary": summary,
+                "link_aggregations": lags_list,
+                "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
+
 
         if isinstance(records, list):
             return {

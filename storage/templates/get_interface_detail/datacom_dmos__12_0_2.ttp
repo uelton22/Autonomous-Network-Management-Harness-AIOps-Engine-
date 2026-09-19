@@ -1,0 +1,9 @@
+<group name="detail">
+Interface {{ name }} is {{ admin_status }}, line protocol is {{ oper_status }}
+  Hardware is {{ hardware | ORPHRASE }}, address is {{ mac_address }}
+  Description: {{ description | ORPHRASE }}
+  MTU {{ mtu }} bytes, BW {{ speed_bps }} Kbit/sec
+  Last link flap: {{ last_flapped | ORPHRASE }}
+    {{ in_errors | DIGIT }} input errors, {{ in_crc_errors | DIGIT }} CRC errors
+    {{ out_errors | DIGIT }} output errors, {{ in_discards | DIGIT }} discards
+</group>

@@ -1,0 +1,18 @@
+<group name="aggregations">
+{{ lag_id | DIGIT }} {{ interface }} {{ oper_status }} {{ aggregation_status }} {{ lacp_status }}
+</group>
+<group name="aggregations">
+  {{ interface }} {{ oper_status }} {{ aggregation_status }} {{ lacp_status }}
+</group>
+<group name="aggregations">
+{{ interface | exclude('ID') }}    {{ oper_status }}    {{ shutdown }}     {{ speed }}     {{ duplex }}    {{ disabled_by }}         {{ blocked_by }}        lag-{{ lag_id | DIGIT }}   {{ description | ORPHRASE }}
+</group>
+<group name="aggregations">
+{{ interface | exclude('ID') }}    {{ oper_status }}    {{ shutdown }}     {{ speed }}     {{ duplex }}    {{ disabled_by }}         {{ blocked_by }}        lag-{{ lag_id | DIGIT }}
+</group>
+<group name="aggregations">
+{{ lag_id | DIGIT }} {{ oper_status }} {{ mode }} {{ snmp_ifindex }} {{ description | ORPHRASE }}
+</group>
+<group name="aggregations">
+{{ lag_id | DIGIT }} {{ oper_status }} {{ mode }} {{ snmp_ifindex }}
+</group>
