@@ -1,7 +1,0 @@
-<group name="info">
-Huawei Versatile Routing Platform Software
-VRP (R) software, Version {{ os_version }} ({{ model | ORPHRASE }})
-HUAWEI {{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
-Patch Version: {{ patch_version }}
-Hardware Model       : {{ hardware_model | ORPHRASE }}
-</group>

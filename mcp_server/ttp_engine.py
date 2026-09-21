@@ -346,9 +346,20 @@ username {{ username }} secret {{ password_hash }}
  Router ID: {{ router_id }} Address: {{ address }}
 </group>
 """
+    elif action == "get_vpws_groups":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="vpws_records">
+{{ line | _line_ | exclude('---') | exclude('VPWS-Group') | exclude('Oper') }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="vpws_records">
+{{ line | _line_ | exclude('---') | exclude('display') | exclude('Total') }}
+</group>
+"""
         elif "cisco" in vos or "ios" in vos:
-            return """<group name="neighbors">
-{{ router_id }} {{ priority | DIGIT }} {{ state }} {{ dead_time }} {{ address }} {{ local_interface }}
+            return """<group name="vpws_records">
+{{ line | _line_ | exclude('---') | exclude('Legend') }}
 </group>
 """
 
@@ -409,7 +420,7 @@ class TTPHybridEngine:
                 flat = flat[0]
 
             if isinstance(flat, dict):
-                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "aggregations", "users", "sessions", "data"):
+                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "aggregations", "users", "sessions", "vpws_records", "vpws", "groups", "data"):
                     if group_key in flat:
                         val = flat[group_key]
                         return val if isinstance(val, list) else [val]

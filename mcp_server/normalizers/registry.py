@@ -17,6 +17,7 @@ from mcp_server.normalizers.bgp import normalize_bgp_summary
 from mcp_server.normalizers.lldp import normalize_lldp_neighbors
 from mcp_server.normalizers.users import normalize_system_users, normalize_user_sessions
 from mcp_server.normalizers.ospf import normalize_ospf_neighbors
+from mcp_server.normalizers.vpws import normalize_vpws_groups
 from mcp_server.normalizers.generic import GenericOpenConfigNormalizer
 
 
@@ -55,6 +56,9 @@ def normalize_records_pipeline(
 
     elif action == "get_ospf_neighbors":
         return normalize_ospf_neighbors(records, device_hostname)
+
+    elif action == "get_vpws_groups":
+        return normalize_vpws_groups(records, device_hostname)
 
     # Fallback Declarativo para novas ações
     return GenericOpenConfigNormalizer.normalize(action, records, device_hostname)

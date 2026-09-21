@@ -1,6 +1,0 @@
-<group name="users" default="N/A">
-aaa user {{ username }}
- password {{ password_hash }}
- group {{ group }}
-! {{ _exact_ }}
-</group>
