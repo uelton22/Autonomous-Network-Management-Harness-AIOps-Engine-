@@ -1,0 +1,12 @@
+<group name="sessions">
+{{ is_current | contains('+') }} {{ session_id }} {{ context }} {{ context_num }} {{ delay }} {{ protocol }} {{ source_ip }} {{ authen_status }} {{ author_cmd }} Username : {{ username }}
+</group>
+<group name="sessions">
+  {{ session_id }} {{ context }} {{ context_num }} {{ delay }} {{ protocol }} {{ source_ip }} {{ authen_status }} {{ author_cmd }} Username : {{ username }}
+</group>
+<group name="sessions">
+{{ session_id }} {{ context }} {{ context_num }} {{ delay }} {{ protocol }} {{ source_ip }} {{ authen_status }} {{ author_cmd }} Username : {{ username }}
+</group>
+<group name="sessions">
+  {{ session_id }} {{ is_current | contains('*') }} {{ mode }} {{ delay }} {{ username }} {{ source_ip }}
+</group>

@@ -280,7 +280,13 @@ aaa user {{ username }}
 </group>
 """
         elif "vrp" in vos or "huawei" in vos:
-            return """<group name="users" default="N/A">
+            return """<group name="users">
+  {{ username | exclude('User-name') | exclude('Total') }} {{ state }} {{ auth_mask }} {{ admin_level }}
+</group>
+<group name="users">
+{{ username | exclude('User-name') | exclude('Total') }} {{ state }} {{ auth_mask }} {{ admin_level }}
+</group>
+<group name="users">
   local-user {{ username }} password {{ password_type }} {{ password_hash }}
   local-user {{ username }} privilege level {{ privilege_level }}
   local-user {{ username }} service-type {{ service_type }}
@@ -304,12 +310,45 @@ username {{ username }} secret {{ password_hash }}
 """
         elif "vrp" in vos or "huawei" in vos:
             return """<group name="sessions">
+{{ is_current | contains('+') }} {{ session_id }} {{ context }} {{ context_num }} {{ delay }} {{ protocol }} {{ source_ip }} {{ authen_status }} {{ author_cmd }} Username : {{ username }}
+</group>
+<group name="sessions">
+  {{ session_id }} {{ context }} {{ context_num }} {{ delay }} {{ protocol }} {{ source_ip }} {{ authen_status }} {{ author_cmd }} Username : {{ username }}
+</group>
+<group name="sessions">
+{{ session_id }} {{ context }} {{ context_num }} {{ delay }} {{ protocol }} {{ source_ip }} {{ authen_status }} {{ author_cmd }} Username : {{ username }}
+</group>
+<group name="sessions">
   {{ session_id }} {{ is_current | contains('*') }} {{ mode }} {{ delay }} {{ username }} {{ source_ip }}
 </group>
 """
         elif "cisco" in vos or "ios" in vos:
             return """<group name="sessions">
   {{ session_id }} {{ is_current | contains('*') }} {{ line }} {{ username }} {{ idle }} {{ location }}
+</group>
+"""
+
+    elif action == "get_ospf_neighbors":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="neighbors">
+{{ router_id }} {{ priority | DIGIT }} {{ state }} {{ dr_state }} {{ address }} {{ local_interface }}
+</group>
+<group name="neighbors">
+{{ router_id }} {{ priority | DIGIT }} {{ state }} {{ dead_time }} {{ address }} {{ local_interface }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="neighbors">
+ {{ area }} {{ local_interface }} {{ router_id }} {{ state }}
+</group>
+<group name="neighbors">
+ Area {{ area }} interface {{ local_ip }}({{ local_interface }})'s neighbors
+ Router ID: {{ router_id }} Address: {{ address }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="neighbors">
+{{ router_id }} {{ priority | DIGIT }} {{ state }} {{ dead_time }} {{ address }} {{ local_interface }}
 </group>
 """
 

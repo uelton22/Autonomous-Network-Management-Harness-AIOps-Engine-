@@ -49,10 +49,10 @@ Diante de qualquer comando ou pergunta do operador humano no chat, siga obrigato
    - Se for uma verificação simples (ex: "Qual a versão do switch Datacom?"), execute a ação atômica `get_system_version`.
    - Se for verificação de vizinhos (ex: "Quais os vizinhos LLDP?"), execute a ação atômica `get_lldp_neighbors`.
    - Se for uma auditoria com dependência (ex: "Audite as interfaces com erro"), execute o workflow `diagnose_down_interfaces`.
-2. **Definir o Nível de Privilégio**:
-   - Sempre utilize `privilege_level="read"` por padrão.
-   - Se a operação envolver alteração operacional (descrição, porta de teste), use `editor`.
-   - Somente use `full` se o usuário solicitar explicitamente uma ação administrativa de alto impacto.
+2. **Definir o Nível de Privilégio & Briefing Prévia**:
+   - Sempre utilize `privilege_level="read"` por padrão. Todas as coletas e probes devem ser feitas via ferramentas MCP (`execute_command`, `run_canonical_action`).
+   - É terminantemente **proibido** rodar scripts Python inline (`python -c ...`) no terminal via `run_command` para tentar contornar privilégios ou regras do Gatekeeper.
+   - Se for estritamente necessária uma ação `editor` ou `full` (ou uso do terminal), emita obrigatoriamente um alerta prévio no chat em português detalhando Host, Privilégio, Comandos e Justificativa antes de disparar a ação que acionará o modal de aprovação nativo da IDE.
 3. **Consultar `registry/actions.yaml`**:
    - Obtenha a sintaxe real do comando conforme a família do SO.
    - **Atenção especial com Datacom**: Jamais adivinhe sintaxe Cisco para caixas Datacom. Consulte sempre a Vendor Skill `skills/network-vendor-datacom/SKILL.md` e o catálogo `actions.yaml`.

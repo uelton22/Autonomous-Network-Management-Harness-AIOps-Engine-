@@ -17,6 +17,7 @@ from mcp_server.schemas.bgp import BgpSummarySchema
 from mcp_server.schemas.lldp import LLDPNeighborsSchema
 from mcp_server.schemas.system_users import SystemUsersSchema
 from mcp_server.schemas.user_sessions import UserSessionsSchema
+from mcp_server.schemas.ospf import OspfNeighborsSchema
 
 
 ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
@@ -30,6 +31,7 @@ ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
     "get_link_aggregation": LinkAggregationSchema,
     "get_system_users": SystemUsersSchema,
     "get_active_sessions": UserSessionsSchema,
+    "get_ospf_neighbors": OspfNeighborsSchema,
 }
 
 

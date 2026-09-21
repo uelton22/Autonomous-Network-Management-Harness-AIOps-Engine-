@@ -2,7 +2,7 @@ version: "1.0"
 description: "Catálogo Canônico Multi-Vendor de Ações Atômicas e Workflows DAG para Redes"
 
 # -------------------------------------------------------------------------
-# AÇÕES ATÔMICAS (Comandos Granulares Independentes)
+# AÇÕES ATÔMICAS (Comandos Granulares Independentes com Resolução Multi-Versão)
 # -------------------------------------------------------------------------
 atomic_actions:
   get_system_version:
@@ -10,14 +10,21 @@ atomic_actions:
     schema: "registry/schemas/device_info.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show firmware"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "show firmware"
         clean_pager: "terminal length 0"
-        note: "Datacom DmOS reporta firmware através de show firmware ou show platform"
+      huawei_vrp_v200:
+        command: "display version"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display version"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display version"
         clean_pager: "screen-length 0 temporary"
-        note: "Huawei VRP reporta VRP software version e uptime em display version"
       cisco_iosxe:
         command: "show version"
         clean_pager: "terminal length 0"
@@ -27,10 +34,22 @@ atomic_actions:
     schema: "registry/schemas/device_info.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show platform | include DM"
+        clean_pager: "terminal length 0"
+        fallback_command: "show platform"
       datacom_dmos:
         command: "show platform | include DM"
         clean_pager: "terminal length 0"
         fallback_command: "show platform"
+      huawei_vrp_v200:
+        command: "display device"
+        clean_pager: "screen-length 0 temporary"
+        fallback_command: "display elabel"
+      huawei_vrp_v800:
+        command: "display device"
+        clean_pager: "screen-length 0 temporary"
+        fallback_command: "display elabel"
       huawei_vrp:
         command: "display device"
         clean_pager: "screen-length 0 temporary"
@@ -44,10 +63,17 @@ atomic_actions:
     schema: "registry/schemas/device_info.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show system uptime"
+        clean_pager: "terminal length 0"
+        fallback_command: "show system"
       datacom_dmos:
         command: "show system uptime"
         clean_pager: "terminal length 0"
         fallback_command: "show system"
+      huawei_vrp_v200:
+        command: "display version"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display version"
         clean_pager: "screen-length 0 temporary"
@@ -60,9 +86,18 @@ atomic_actions:
     schema: "registry/schemas/interfaces.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show interface link"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "show interface link"
         clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display interface description"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display interface description"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display interface description"
         clean_pager: "screen-length 0 temporary"
@@ -80,9 +115,18 @@ atomic_actions:
         description: "Nome da interface no padrão do fabricante (ex: GE1/0/2 ou 1/1/1)"
         required: true
     platforms:
+      datacom_dmos_12:
+        command: "show interface {interface_name}"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "show interface {interface_name}"
         clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display interface {interface_name}"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display interface {interface_name}"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display interface {interface_name}"
         clean_pager: "screen-length 0 temporary"
@@ -95,9 +139,18 @@ atomic_actions:
     schema: "registry/schemas/bgp_summary.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show ip bgp summary"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "show ip bgp summary"
         clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display bgp peer"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display bgp peer"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display bgp peer"
         clean_pager: "screen-length 0 temporary"
@@ -110,10 +163,22 @@ atomic_actions:
     schema: "registry/schemas/lldp_neighbors.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show lldp neighbors detail"
+        clean_pager: "terminal length 0"
+        fallback_command: "show lldp neighbors"
       datacom_dmos:
         command: "show lldp neighbors detail"
         clean_pager: "terminal length 0"
         fallback_command: "show lldp neighbors"
+      huawei_vrp_v200:
+        command: "display lldp neighbor brief"
+        clean_pager: "screen-length 0 temporary"
+        fallback_command: "display lldp neighbor"
+      huawei_vrp_v800:
+        command: "display lldp neighbor brief"
+        clean_pager: "screen-length 0 temporary"
+        fallback_command: "display lldp neighbor"
       huawei_vrp:
         command: "display lldp neighbor brief"
         clean_pager: "screen-length 0 temporary"
@@ -128,10 +193,20 @@ atomic_actions:
     schema: "registry/schemas/link_aggregation.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show interface link"
+        clean_pager: "terminal length 0"
+        fallback_command: "show link-aggregation interfaces"
       datacom_dmos:
         command: "show interface link"
         clean_pager: "terminal length 0"
         fallback_command: "show link-aggregation interfaces"
+      huawei_vrp_v200:
+        command: "display eth-trunk"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display eth-trunk"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display eth-trunk"
         clean_pager: "screen-length 0 temporary"
@@ -144,9 +219,18 @@ atomic_actions:
     schema: "registry/schemas/system_users.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "show running-config aaa"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "show running-config aaa"
         clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display local-user"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display local-user"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display local-user"
         clean_pager: "screen-length 0 temporary"
@@ -159,14 +243,49 @@ atomic_actions:
     schema: "registry/schemas/user_sessions.json"
     privilege: "read"
     platforms:
+      datacom_dmos_12:
+        command: "who"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "who"
         clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display users"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display users"
+        clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "display users"
         clean_pager: "screen-length 0 temporary"
       cisco_iosxe:
         command: "show users"
+        clean_pager: "terminal length 0"
+
+  get_ospf_neighbors:
+    description: "Coleta vizinhos e adjacências OSPF ativos no equipamento (openconfig-ospfv2)"
+    schema: "registry/schemas/ospf_neighbors.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos_12:
+        command: "show ip ospf neighbor brief"
+        fallback_command: "show ip ospf neighbor"
+        clean_pager: "terminal length 0"
+      datacom_dmos:
+        command: "show ip ospf neighbor brief"
+        fallback_command: "show ip ospf neighbor"
+        clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display ospf peer brief"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "display ospf peer brief"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp:
+        command: "display ospf peer brief"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show ip ospf neighbor"
         clean_pager: "terminal length 0"
 
 

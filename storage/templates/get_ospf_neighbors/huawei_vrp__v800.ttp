@@ -1,0 +1,7 @@
+<group name="neighbors">
+ {{ area }} {{ local_interface }} {{ router_id }} {{ state }}
+</group>
+<group name="neighbors">
+ Area {{ area }} interface {{ local_ip }}({{ local_interface }})'s neighbors
+ Router ID: {{ router_id }} Address: {{ address }}
+</group>

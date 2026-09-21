@@ -38,8 +38,36 @@ O Agente deve sempre operar no menor nível de privilégio suficiente para atend
 
 ---
 
-## Tratamento de Violações
+## 4. Protocolo de Aprovação Humana e Consentimento Informado (Human-in-the-Loop)
+
+As IDEs (Antigravity, Cursor, Claude Code, VSCode) possuem barreiras de segurança nativas e invariáveis que solicitam autorização do usuário em inglês para execução de scripts de terminal.
+
+Para garantir transparência e evitar que o operador seja surpreendido por diálogos genéricos:
+
+### Regra 1: Proibição Estrita de Contorno via Shell Inline
+- É **TERMINANTEMENTE PROIBIDO** disparar scripts Python inline (`python -c "from mcp_server..."`) via terminal (`run_command`) para executar comandos de rede ou forçar `privilege_level='full'`.
+- Todas as execuções, testes de sintaxe e coletas em switches devem ocorrer **exclusivamente via Servidor MCP** (`execute_command`, `run_canonical_action`, `run_adhoc_action`). As chamadas de ferramentas MCP não disparam alertas confusos de shell no terminal da IDE.
+
+### Regra 2: Briefing Prévio no Chat em Português
+Sempre que for estritamente necessária uma ação de nível `editor` ou `full`, ou antes de executar qualquer comando no terminal que demande aprovação da IDE, o Agente **DEVE** emitir um aviso prévio no chat com a seguinte estrutura:
+
+```markdown
+> [!WARNING]
+> ### Solicitação de Autorização Operacional
+> - **Equipamento**: `<IP_OU_HOSTNAME>`
+> - **Nível de Privilégio**: `EDITOR` ou `FULL`
+> - **Comandos Solicitados**: `<COMANDO>`
+> - **Justificativa Técnica**: `<MOTIVO_CLARO>`
+> - **Impacto Estimado**: `<IMPACTO_NA_REDE>`
+> 
+> *A sua IDE exibirá a janela nativa de confirmação a seguir. Por favor, revise os dados acima e confirme a execução.*
+```
+
+---
+
+## 5. Tratamento de Violações
 Se um comando for bloqueado pelo Gatekeeper (`PrivilegeViolationError`), o Agente deve:
 1. Interromper a execução imediatamente.
 2. Informar o operador de forma clara sobre a recusa do Gatekeeper.
-3. Não tentar burlar a sintaxe com apelidos ou abreviações.
+3. Não tentar burlar a sintaxe com apelidos, abreviações ou scripts no terminal.
+

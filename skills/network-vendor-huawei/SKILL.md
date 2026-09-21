@@ -33,6 +33,29 @@ O Huawei Versatile Routing Platform (VRP) utiliza primordialmente a palavra-chav
 - **Detalhes de Interface**: `display interface {interface_name}` (ex: `display interface GigabitEthernet1/0/2`)
 - **Status Operacional**: `Physical: up/down`, `Protocol: up/down`, `*down` (administrativamente desativada).
 
-### BGP
-- **Resumo de Peers**: `display bgp peer`
-- **Contadores de Prefixos**: Campo `PrefRcv` e estado `Established`.
+### Link Aggregation (Eth-Trunk)
+- **Resumo**: `display eth-trunk`
+- **Detalhes**: `display eth-trunk {id}`
+- **Membros**: Interfaces físicas agrupadas com status `Selected` ou `Unselect`.
+
+### Usuários e Sessões
+- **Contas Locais**: `display local-user`
+- **Sessões Conectadas**: `display users`
+
+### LLDP (Vizinhança)
+- **Vizinhos**: `display lldp neighbor brief`
+
+---
+
+## 3. Documentação Oficial e Referência Multi-Versão
+
+Os manuais oficiais de comandos da Huawei estão indexados em `command_reference/huawei/` particionados por versão de SO (ex: `command_reference/huawei/V200R011C10/`).
+
+Sempre que precisar consultar sintaxes ou parâmetros específicos de VRP, consulte a tool MCP:
+```python
+search_command_reference(vendor="huawei", query="display eth-trunk", version="v200", read_only=True)
+```
+- **Versões Suportadas no Repositório**:
+  - `V200R011C10` (Switches S1720, S2700, S5700, S6720)
+  - `V600` / `V800` (Roteadores NE40E, NetEngine, switches CloudEngine - em expansão)
+

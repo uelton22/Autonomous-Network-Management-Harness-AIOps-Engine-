@@ -88,35 +88,46 @@ def search_command_reference(
     vendor: str,
     query: str,
     read_only: bool = True,
-    category: str = ""
+    category: str = "",
+    version: str = ""
 ) -> str:
     """
     Pesquisa rápida na documentação e guia de comandos oficial do fabricante (command_reference/).
     Retorna comandos canônicos válidos, sintaxes, capítulos e parâmetros em milissegundos.
+    Suporta resolução automática de subpastas de versão de SO (ex: 'V200R011C10', 'v200', 'v600', 'v800').
     Utilize ANTES de executar comandos ad-hoc para evitar comandos incorretos ou alucinações de sintaxe.
 
     Parâmetros:
       vendor: datacom | huawei | cisco
-      query: Palavra-chave ou termo de pesquisa (ex: 'interface link', 'link-aggregation', 'bgp')
+      query: Palavra-chave ou termo de pesquisa (ex: 'display eth-trunk', 'interface link', 'bgp')
       read_only: Se True, restringe aos comandos de leitura/inspeção (show / display)
       category: Categoria opcional para refinar (ex: 'interface', 'management', 'routing')
+      version: Versão específica de SO se aplicável (ex: 'v200', 'V200R011C10', 'v600'). Se omitido, busca em todas as versões disponíveis.
     """
     try:
+        available_versions = cmd_searcher.list_available_versions(vendor)
         results = cmd_searcher.search_commands(
             vendor=vendor,
             query=query,
             read_only=read_only,
             category=category or None,
+            version=version or None,
             max_results=10
         )
         details = None
         if len(results) == 1:
-            details = cmd_searcher.get_command_details(vendor, results[0].get("command", ""))
+            cmd_doc_ver = results[0].get("doc_version")
+            details = cmd_searcher.get_command_details(
+                vendor=vendor,
+                command_name=results[0].get("command", ""),
+                version=cmd_doc_ver if cmd_doc_ver != "default" else None
+            )
 
         return json.dumps({
             "status": "success",
             "vendor": vendor,
-            "query": query,
+            "version_filter": version or "all_available",
+            "available_versions": available_versions,
             "total_found": len(results),
             "results": results,
             "details": details
@@ -126,6 +137,7 @@ def search_command_reference(
             "status": "error",
             "vendor": vendor,
             "query": query,
+            "version": version,
             "error": str(e)
         }, indent=2, ensure_ascii=False)
 

@@ -112,33 +112,43 @@ Estrutura obrigatória:
 }
 ```
 
-### Fase 5: Registro Hierárquico em `registry/actions.yaml`
-Cadastre a ação com granularidade multi-versão:
+### Fase 5: Registro Hierárquico e Versionado em `registry/actions.yaml`
+Ao cadastrar ou atualizar a ação, é **OBRIGATÓRIO** registrar a chave da plataforma com a versão específica coletada no fingerprinting (`{vendor}_{os_family}_{major_version}`, ex: `huawei_vrp_v200`, `datacom_dmos_12`, `cisco_iosxe_17`), além do fallback genérico (`huawei_vrp`, `datacom_dmos`, etc.):
+
 ```yaml
   <action_name>:
     description: "Descrição clara e objetiva do recurso canônico"
     schema: "registry/schemas/<action_name>.json"
     privilege: "read"
     platforms:
-      # Datacom DmOS
+      # Datacom DmOS (versão específica e fallback)
+      datacom_dmos_12:
+        command: "<comando_validado_dmos>"
+        clean_pager: "terminal length 0"
       datacom_dmos:
         command: "<comando_validado_dmos>"
         clean_pager: "terminal length 0"
-      # Huawei VRP (com override por versão se houver divergência)
-      huawei_vrp_v800:
-        command: "<comando_v800>"
-        clean_pager: "screen-length 0 temporary"
+      # Huawei VRP (versão específica homologada e fallback)
       huawei_vrp_v200:
         command: "<comando_v200>"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp_v800:
+        command: "<comando_v800>"
         clean_pager: "screen-length 0 temporary"
       huawei_vrp:
         command: "<comando_padrao_vrp>"
         clean_pager: "screen-length 0 temporary"
       # Cisco IOS-XE / NX-OS
+      cisco_iosxe_17:
+        command: "<comando_cisco>"
+        clean_pager: "terminal length 0"
       cisco_iosxe:
         command: "<comando_cisco>"
         clean_pager: "terminal length 0"
 ```
+> [!IMPORTANT]
+> **Nunca omita a chave versionada** (ex: `huawei_vrp_v200`). Isso garante que comandos de versões diferentes não colidam e que o sistema saiba exatamente qual sintaxe foi homologada para cada release de software.
+
 
 ### Fase 6: Síntese e Isolamento de Templates TTP
 Invoque `run_canonical_action(host, action_name)`:

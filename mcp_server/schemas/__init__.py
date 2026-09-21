@@ -11,6 +11,7 @@ from mcp_server.schemas.bgp import BgpSummarySchema, BgpPeerItem
 from mcp_server.schemas.lldp import LLDPNeighborsSchema, LLDPNeighborItem
 from mcp_server.schemas.system_users import SystemUsersSchema, SystemUserItem, SystemUsersSummary
 from mcp_server.schemas.user_sessions import UserSessionsSchema, UserSessionItem, UserSessionsSummary
+from mcp_server.schemas.ospf import OspfNeighborsSchema, OspfNeighborItem, OspfNeighborsSummary
 from mcp_server.schemas.registry import ACTION_SCHEMA_MAP, get_schema_for_action, get_json_schema_definition
 
 __all__ = [
@@ -33,6 +34,9 @@ __all__ = [
     "UserSessionsSchema",
     "UserSessionItem",
     "UserSessionsSummary",
+    "OspfNeighborsSchema",
+    "OspfNeighborItem",
+    "OspfNeighborsSummary",
     "ACTION_SCHEMA_MAP",
     "get_schema_for_action",
     "get_json_schema_definition",

@@ -1,0 +1,11 @@
+<group name="users">
+  {{ username | exclude('User-name') | exclude('Total') }} {{ state }} {{ auth_mask }} {{ admin_level }}
+</group>
+<group name="users">
+{{ username | exclude('User-name') | exclude('Total') }} {{ state }} {{ auth_mask }} {{ admin_level }}
+</group>
+<group name="users">
+  local-user {{ username }} password {{ password_type }} {{ password_hash }}
+  local-user {{ username }} privilege level {{ privilege_level }}
+  local-user {{ username }} service-type {{ service_type }}
+</group>
