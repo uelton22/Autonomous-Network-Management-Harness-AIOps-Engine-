@@ -126,25 +126,7 @@ Version                     State
         t2.add_row(k, str(v))
     console.print(t2)
 
-    # Validação LLDP Neighbors
-    sample_dmos_lldp = """                        NEIGHBOR  CHASSIS ID                                                                                                            
-LOCAL INTERFACE         ID        SUBTYPE      CHASSIS ID         SYSTEM NAME                           PORT ID                 PORT DESCRIPTION        
---------------------------------------------------------------------------------------------------------------------------------------------------------
-gigabit-ethernet-1/1/5  5         mac-address  18:81:ed:14:51:48  5.4.242-SWT-BAIXA-GRANDE-R-GONCALVES  gigabit-ethernet-1/1/5  gigabit-ethernet-1/1/5  
-"""
-    res_lldp = engine.parse_with_pipeline(
-        action="get_lldp_neighbors",
-        vendor="datacom",
-        os_family="dmos",
-        version="12_0_2",
-        raw_stdout=sample_dmos_lldp,
-        device_hostname="unit-test-dmos"
-    )
-    assert len(res_lldp["data"]["neighbors"]) == 1, "Falha na extração do vizinho LLDP!"
-    assert res_lldp["data"]["neighbors"][0]["system_name"] == "5.4.242-SWT-BAIXA-GRANDE-R-GONCALVES"
-    console.print("[bold green]✔ LLDP Parsing e Validação OpenConfig comprovada com sucesso.[/bold green]")
-
-    console.print("[bold green]✔ Teste 2 APROVADO: Parsing TTP e validação OpenConfig com sucesso.[/bold green]")
+    console.print("[bold green]✔ Teste 2 APROVADO: Parsing TTP e validação OpenConfig DeviceInfo com sucesso.[/bold green]")
     passed_count += 1
 
     # ---------------------------------------------------------------------

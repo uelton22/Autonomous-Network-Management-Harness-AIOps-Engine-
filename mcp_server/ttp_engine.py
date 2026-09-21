@@ -22,17 +22,6 @@ from mcp_server.schemas import (
     ACTION_SCHEMA_MAP,
     get_schema_for_action,
     DeviceInfoSchema,
-    InterfacesSchema,
-    InterfaceDetailItem,
-    InterfaceSummaryStats,
-    LinkAggregationSchema,
-    LagItem,
-    LagMemberItem,
-    LagSummaryStats,
-    BgpSummarySchema,
-    BgpPeerItem,
-    LLDPNeighborsSchema,
-    LLDPNeighborItem,
 )
 from mcp_server.normalizers import normalize_records_pipeline
 
