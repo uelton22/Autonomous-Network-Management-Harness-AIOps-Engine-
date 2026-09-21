@@ -59,7 +59,7 @@ Nas abordagens convencionais de automação de rede com LLMs ou frameworks legad
 
 #### A Abordagem Revolucionária deste Harness
 Com este Harness, **o operador não precisa saber o comando exato, a versão do firmware ou o modelo da caixa**, e **o desenvolvedor não precisa criar ferramentas para cada comando**:
-1. **Intenção em Linguagem Natural**: O operador apenas expressa o que deseja no chat (ex: *"Liste os usuários locais e sessões ativas do switch 100.75.4.243"* ou *"Verifique as interfaces caídas"*).
+1. **Intenção em Linguagem Natural**: O operador apenas expressa o que deseja no chat (ex: *"Liste os usuários locais e sessões ativas do switch 10.0.0.1"* ou *"Verifique as interfaces caídas"*).
 2. **Descoberta e Resolução Automática**: O Harness conecta-se ao equipamento, realiza o fingerprinting determinístico em 3 níveis (L1 Banner $\rightarrow$ L2 Prompt $\rightarrow$ L3 Probe) e descobre fabricante, SO e release exata com 100% de confiança.
 3. **Consulta Autônoma aos Manuais Oficiais**: Se o comando não estiver catalogado, o Harness consulta a base oficial em `command_reference/` via `search_command_reference` para localizar a sintaxe exata daquela versão de SO.
 4. **Auto-Cura e Síntese de Templates TTP**: Em vez de exigir um parser programado manualmente, o motor TTP do Harness sintetiza o template na sandbox local em milissegundos, valida o layout contra a saída real, e promove o template ao cache permanente.
@@ -74,7 +74,7 @@ O diagrama abaixo ilustra o ciclo de vida completo de uma solicitação no Harne
 ```mermaid
 flowchart TD
     subgraph OPERADOR["Operador Humano / IDE Chat"]
-        USER["Intenção do Usuário<br/>(Ex: 'Identifique o switch 100.75.9.252')"]
+        USER["Intenção do Usuário<br/>(Ex: 'Identifique o switch 10.0.0.1')"]
         APPROVAL["Confirmação Human-in-the-Loop<br/>(Apenas se privilégio for Editor ou Full)"]
     end
 
@@ -391,18 +391,18 @@ python3 -m harness.run_harness_test
 
 ### Exemplo 1: Identificação de Equipamento e Firmware
 **Operador no Chat**:
-> *"Identifique o equipamento no IP 100.75.9.252 e verifique a versão de firmware e hardware."*
+> *"Identifique o equipamento no IP 10.0.0.1 e verifique a versão de firmware e hardware."*
 
 **Comportamento do Agente**:
-1. Aciona `discover_device(host="100.75.9.252")` com privilégio `read`.
+1. Aciona `discover_device(host="10.0.0.1")` com privilégio `read`.
 2. O L3 Probe identifica Datacom DmOS versão `12.0.2` modelo `DM4770`.
-3. Aciona `run_canonical_action(host="100.75.9.252", action="get_system_version")`.
+3. Aciona `run_canonical_action(host="10.0.0.1", action="get_system_version")`.
 4. O TTP recupera os dados, valida no modelo `DeviceInfo` e persiste em `storage/normalized/`.
 5. Apresenta o resultado estruturado em tabela para o operador, sem expor strings de terminal brutas.
 
 ### Exemplo 2: Bloqueio de Comando Indevido pelo Gatekeeper
 **Operador no Chat**:
-> *"Reinicie o switch 100.75.9.252 agora."*
+> *"Reinicie o switch 10.0.0.1 agora."*
 
 **Comportamento do Agente**:
 1. O agente identifica que `reboot` exige privilégio `full` e viola a política padrão `read`.
