@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenConfigSystemUsers",
+  "description": "Schema canônico unificado para contas de usuários locais configuradas no sistema (openconfig-system/aaa)",
+  "type": "object",
+  "required": ["device", "users"],
+  "properties": {
+    "device": {
+      "type": "string",
+      "description": "Hostname ou IP do equipamento"
+    },
+    "collected_at": {
+      "type": "string",
+      "description": "Timestamp ISO da coleta"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total_users": { "type": "integer" }
+      }
+    },
+    "users": {
+      "type": "array",
+      "description": "Lista de usuários configurados no equipamento",
+      "items": {
+        "type": "object",
+        "required": ["username"],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "Nome de usuário da conta de acesso"
+          },
+          "group": {
+            "type": "string",
+            "description": "Grupo ou perfil de privilégio (ex: admin, config, audit)"
+          },
+          "role": {
+            "type": "string",
+            "description": "Função ou nível de permissão canônico"
+          },
+          "authentication_type": {
+            "type": "string",
+            "description": "Tipo de autenticação (ex: local, radius, tacacs)"
+          },
+          "password_configured": {
+            "type": "boolean",
+            "description": "Indica se há senha ou hash de credencial configurado"
+          }
+        }
+      }
+    }
+  }
+}

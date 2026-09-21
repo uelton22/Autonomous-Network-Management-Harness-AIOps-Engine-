@@ -16,6 +16,9 @@
     "summary": {
       "type": "object",
       "properties": {
+        "total_aggregations": { "type": "integer" },
+        "active_aggregations": { "type": "integer" },
+        "down_aggregations": { "type": "integer" },
         "total_lags": { "type": "integer" },
         "active_lags": { "type": "integer" },
         "down_lags": { "type": "integer" },

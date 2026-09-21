@@ -17,12 +17,14 @@ from mcp_server.security import enforce_privilege, PrivilegeViolationError
 from mcp_server.ssh_runner import SSHRunner
 from mcp_server.fingerprinter import progressive_fingerprint
 from mcp_server.ttp_engine import TTPHybridEngine
+from mcp_server.command_ref_search import CommandReferenceSearcher
 
 
 # Inicialização dos componentes
 server = MCPServer("netops-ssh-mcp")
 ssh_runner = SSHRunner(raw_storage_dir="storage/raw")
 ttp_engine = TTPHybridEngine(template_dir="storage/templates")
+cmd_searcher = CommandReferenceSearcher(base_dir="command_reference")
 
 ACTIONS_FILE = Path("registry/actions.yaml")
 
@@ -77,6 +79,53 @@ def execute_command(
             "status": "error",
             "host": host,
             "command": command,
+            "error": str(e)
+        }, indent=2, ensure_ascii=False)
+
+
+@server.tool()
+def search_command_reference(
+    vendor: str,
+    query: str,
+    read_only: bool = True,
+    category: str = ""
+) -> str:
+    """
+    Pesquisa rápida na documentação e guia de comandos oficial do fabricante (command_reference/).
+    Retorna comandos canônicos válidos, sintaxes, capítulos e parâmetros em milissegundos.
+    Utilize ANTES de executar comandos ad-hoc para evitar comandos incorretos ou alucinações de sintaxe.
+
+    Parâmetros:
+      vendor: datacom | huawei | cisco
+      query: Palavra-chave ou termo de pesquisa (ex: 'interface link', 'link-aggregation', 'bgp')
+      read_only: Se True, restringe aos comandos de leitura/inspeção (show / display)
+      category: Categoria opcional para refinar (ex: 'interface', 'management', 'routing')
+    """
+    try:
+        results = cmd_searcher.search_commands(
+            vendor=vendor,
+            query=query,
+            read_only=read_only,
+            category=category or None,
+            max_results=10
+        )
+        details = None
+        if len(results) == 1:
+            details = cmd_searcher.get_command_details(vendor, results[0].get("command", ""))
+
+        return json.dumps({
+            "status": "success",
+            "vendor": vendor,
+            "query": query,
+            "total_found": len(results),
+            "results": results,
+            "details": details
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "vendor": vendor,
+            "query": query,
             "error": str(e)
         }, indent=2, ensure_ascii=False)
 
@@ -216,18 +265,42 @@ def run_canonical_action(
 
         action_def = atomic_actions[action]
 
-        # 1. Descoberta de SO
+        # 1. Descoberta de SO e Versão Granular
         fp = progressive_fingerprint(host, ssh_runner)
-        vendor_key = f"{fp.vendor}_{fp.os_family}"
-
         platforms = action_def.get("platforms", {})
-        platform_cfg = platforms.get(vendor_key) or platforms.get(f"{fp.vendor}_{fp.os_family}") or platforms.get("generic")
+
+        # Hierarquia de Resolução Multi-Versão:
+        # 1. Versão exata: ex: huawei_vrp_v800, cisco_nxos_10_x, datacom_dmos_12_0_2
+        # 2. Ramo de release (prefixo): ex: huawei_vrp_v8, datacom_dmos_12
+        # 3. Família de SO: ex: huawei_vrp, cisco_iosxe, datacom_dmos
+        # 4. Fabricante: ex: huawei, cisco, datacom
+        # 5. Genérico: generic
+        v_clean = fp.major_version.lower().replace(".", "_")
+        v_prefix = v_clean.split("_")[0] if "_" in v_clean else v_clean
+
+        candidate_keys = [
+            f"{fp.vendor}_{fp.os_family}_{v_clean}",
+            f"{fp.vendor}_{fp.os_family}_{v_prefix}",
+            f"{fp.vendor}_{fp.os_family}",
+            fp.vendor,
+            "generic"
+        ]
+
+        platform_cfg = None
+        matched_platform_key = None
+        for k in candidate_keys:
+            if k in platforms:
+                platform_cfg = platforms[k]
+                matched_platform_key = k
+                break
 
         if not platform_cfg:
             return json.dumps({
                 "status": "error",
-                "error": f"Nenhuma sintaxe cadastrada para '{action}' na plataforma '{vendor_key}'"
+                "error": f"Nenhuma sintaxe cadastrada para '{action}' na plataforma '{fp.vendor}_{fp.os_family}' (versão: {fp.major_version})"
             })
+
+        vendor_key = f"{fp.vendor}_{fp.os_family}"
 
         # 2. Formata comando com parâmetros se necessário
         cli_command = platform_cfg["command"]
@@ -404,6 +477,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
         print("MCP Server loaded successfully. Available tools:")
         print("- execute_command")
+        print("- search_command_reference")
         print("- discover_device")
         print("- run_canonical_action")
         print("- run_workflow_dag")

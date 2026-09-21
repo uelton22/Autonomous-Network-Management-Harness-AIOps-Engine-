@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenConfigUserSessions",
+  "description": "Schema canônico unificado para sessões ativas de usuários conectadas ao equipamento (openconfig-system)",
+  "type": "object",
+  "required": ["device", "sessions"],
+  "properties": {
+    "device": {
+      "type": "string",
+      "description": "Hostname ou IP do equipamento"
+    },
+    "collected_at": {
+      "type": "string",
+      "description": "Timestamp ISO da coleta"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total_sessions": { "type": "integer" }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "description": "Lista de sessões ativas no equipamento",
+      "items": {
+        "type": "object",
+        "required": ["session_id", "username"],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Identificador da sessão ou tty/vty"
+          },
+          "username": {
+            "type": "string",
+            "description": "Usuário autenticado na sessão"
+          },
+          "context": {
+            "type": "string",
+            "description": "Contexto da sessão (ex: cli, snmp, web, console)"
+          },
+          "source_ip": {
+            "type": "string",
+            "description": "Endereço IP de origem da conexão"
+          },
+          "protocol": {
+            "type": "string",
+            "description": "Protocolo de transporte (ssh, udp, telnet, console)"
+          },
+          "login_time": {
+            "type": "string",
+            "description": "Horário de início da sessão"
+          },
+          "mode": {
+            "type": "string",
+            "description": "Modo da sessão (ex: operational, configuration)"
+          },
+          "is_current": {
+            "type": "boolean",
+            "description": "Indica se esta é a sessão ativa que executou o comando"
+          }
+        }
+      }
+    }
+  }
+}

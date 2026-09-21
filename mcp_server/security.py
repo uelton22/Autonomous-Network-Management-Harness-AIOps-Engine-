@@ -43,19 +43,20 @@ READ_ALLOWED_PATTERNS = [
     re.compile(r"^\s*ping(\s+|$)", re.IGNORECASE),
     re.compile(r"^\s*traceroute(\s+|$)", re.IGNORECASE),
     re.compile(r"^\s*tracert(\s+|$)", re.IGNORECASE),
+    re.compile(r"^\s*who(\s+|$)", re.IGNORECASE),
 ]
 
 # Blacklist estrita para modo READ (bloqueia qualquer modo de config ou mutação)
 READ_BLOCKED_PATTERNS = [
-    re.compile(r"\b(system-view|sys)\b", re.IGNORECASE),
-    re.compile(r"\b(configure\s+terminal|conf\s+t|config)\b", re.IGNORECASE),
+    re.compile(r"^\s*(system-view|sys)\b", re.IGNORECASE),
+    re.compile(r"^\s*(configure\s+terminal|conf\s+t|config)\b", re.IGNORECASE),
     re.compile(r"\b(reboot|reload|reset|power-off|shutdown-system)\b", re.IGNORECASE),
-    re.compile(r"\b(save|write|commit)\b", re.IGNORECASE),
+    re.compile(r"^\s*(save|write|commit)\b", re.IGNORECASE),
     re.compile(r"\b(format|erase|delete|rmdir|remove)\b", re.IGNORECASE),
-    re.compile(r"\b(shutdown)\b", re.IGNORECASE),
+    re.compile(r"^\s*(shutdown)\b", re.IGNORECASE),
     re.compile(r"^\s*(undo|no)\s+", re.IGNORECASE),
     re.compile(r"\b(patch|upgrade|boot-loader|firmware\s+upgrade)\b", re.IGNORECASE),
-    re.compile(r"\b(user|password|aaa|radius|tacacs)\b", re.IGNORECASE),
+    re.compile(r"^\s*(user|password|aaa\s+user|local-user|username|radius|tacacs)\b", re.IGNORECASE),
     re.compile(r"\b(clear\s+configuration|factory-default)\b", re.IGNORECASE),
 ]
 

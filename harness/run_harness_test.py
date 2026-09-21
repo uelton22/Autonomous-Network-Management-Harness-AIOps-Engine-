@@ -138,7 +138,7 @@ gigabit-ethernet-1/1/5  5         mac-address  18:81:ed:14:51:48  5.4.242-SWT-BA
         os_family="dmos",
         version="12_0_2",
         raw_stdout=sample_dmos_lldp,
-        device_hostname="100.75.4.243"
+        device_hostname="unit-test-dmos"
     )
     assert len(res_lldp["data"]["neighbors"]) == 1, "Falha na extração do vizinho LLDP!"
     assert res_lldp["data"]["neighbors"][0]["system_name"] == "5.4.242-SWT-BAIXA-GRANDE-R-GONCALVES"

@@ -1,6 +1,0 @@
-<group name="interfaces">
-{{ name | exclude('ID') }}    {{ oper_status }}    {{ shutdown }}     {{ speed }}     {{ duplex }}    {{ disabled_by }}         {{ blocked_by }}        {{ lag }}   {{ description | ORPHRASE }}
-</group>
-<group name="interfaces">
-{{ name | exclude('ID') }}    {{ oper_status }}    {{ shutdown }}     {{ speed }}     {{ duplex }}    {{ disabled_by }}         {{ blocked_by }}        {{ lag }}
-</group>

@@ -1,0 +1,6 @@
+<group name="sessions">
+*{{ session_id }} {{ username }} {{ context }} {{ source_ip }} {{ protocol }} {{ login_time }} {{ mode }}
+</group>
+<group name="sessions">
+ {{ session_id }} {{ username }} {{ context }} {{ source_ip }} {{ protocol }} {{ login_time }} {{ mode }}
+</group>

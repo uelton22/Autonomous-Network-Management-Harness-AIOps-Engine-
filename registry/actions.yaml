@@ -139,6 +139,36 @@ atomic_actions:
         command: "show etherchannel summary"
         clean_pager: "terminal length 0"
 
+  get_system_users:
+    description: "Coleta contas de usuários locais e privilégios configurados no sistema (openconfig-system/aaa)"
+    schema: "registry/schemas/system_users.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "show running-config aaa"
+        clean_pager: "terminal length 0"
+      huawei_vrp:
+        command: "display local-user"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show running-config | include username"
+        clean_pager: "terminal length 0"
+
+  get_active_sessions:
+    description: "Coleta sessões de usuários ativas conectadas ao equipamento via SSH/CLI/SNMP/Console"
+    schema: "registry/schemas/user_sessions.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos:
+        command: "who"
+        clean_pager: "terminal length 0"
+      huawei_vrp:
+        command: "display users"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe:
+        command: "show users"
+        clean_pager: "terminal length 0"
+
 
 # -------------------------------------------------------------------------
 # WORKFLOWS ORQUESTRADOS (DAGs de Comandos Dependentes e Agregação Canônica)

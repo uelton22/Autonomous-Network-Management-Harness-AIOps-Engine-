@@ -58,10 +58,10 @@ Diante de qualquer comando ou pergunta do operador humano no chat, siga obrigato
    - **Atenção especial com Datacom**: Jamais adivinhe sintaxe Cisco para caixas Datacom. Consulte sempre a Vendor Skill `skills/network-vendor-datacom/SKILL.md` e o catálogo `actions.yaml`.
 4. **Acionar o Servidor MCP com TTP Obrigatório**:
    - **Comandos Catalogados**: Invoque `run_canonical_action(host, action, privilege_level)` ou `run_workflow_dag`.
-   - **Comandos Não Catalogados / Ad-Hoc**: Se a intenção não existir em `actions.yaml`, invoque obrigatoriamente `run_adhoc_action(host, command, action_name)`. Isso força o motor TTP a sintetizar o template na sandbox, salvar o `.ttp` em `storage/templates/{action_name}/` e retornar os dados estruturados.
-   - **NÃO use `execute_command` para coletas de dados**: `execute_command` não realiza parsing e isola o output em disco.
+   - **Comandos Não Catalogados / Ad-Hoc / Novos Recursos**: Se a intenção não existir em `actions.yaml`, consulte o manual em `command_reference/` via `search_command_reference(vendor, query)` e ative a skill [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md). Valide o comando com probe via `execute_command`, gere o schema unificado OpenConfig e registre a ação em `actions.yaml` com hierarquia multi-versão.
+   - **NÃO use `execute_command` para coletas de dados finais**: `execute_command` serve unicamente para testes de baixo nível/probe de sintaxe; coletas reais devem sempre retornar dados estruturados via `run_canonical_action` ou `run_adhoc_action`.
 5. **Apresentar a Resposta**:
-   - Baseie-se exclusivamente nos dados canônicos normalizados em JSON OpenConfig retornados pela tool.
+   - Baseie-se exclusivamente nos dados canônicos normalizados em JSON OpenConfig retornados pela tool e persistidos em `storage/normalized/`.
    - Apresente tabelas claras e conclusões objetivas para o operador. NUNCA tente ler o arquivo `.raw` no olho humano.
 
 ---
@@ -72,12 +72,13 @@ Antes de agir, você deve aderir às diretrizes contidas na pasta `rules/`:
 - [`rules/02-terminal-hygiene.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/02-terminal-hygiene.md): Desativação de pagers (`screen-length 0 temporary`, `terminal length 0`).
 - [`rules/03-raw-data-handling.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/03-raw-data-handling.md): Arquivos `.raw` gravados em disco e isolados de prompts gigantes.
 - [`rules/04-dag-orchestration.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/04-dag-orchestration.md): Encadeamento de ações atômicas com filtros em código local.
-- [`rules/05-openconfig-norms.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/05-openconfig-norms.md): Padrões de mapeamento para os schemas OpenConfig.
+- [`rules/05-openconfig-norms.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/05-openconfig-norms.md): Padrões de mapeamento e neutralidade para schemas OpenConfig.
 
 ---
 
 ## 3. Catálogo de Habilidades (Skills)
 Consulte as skills especializadas para obter procedimentos operacionais detalhados:
+- [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md): Síntese autônoma de actions, schemas unificados e governança multi-versão.
 - [`skills/device-fingerprinting/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/device-fingerprinting/SKILL.md): Descoberta L1 (Banner) $\rightarrow$ L2 (Prompt) $\rightarrow$ L3 (Probe).
 - [`skills/ttp-self-healing/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/ttp-self-healing/SKILL.md): Síntese de templates TTP, sandbox e auto-cura.
 - [`skills/dag-workflow-runner/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/dag-workflow-runner/SKILL.md): Orquestração de workflows dependentes e agregação.

@@ -1,3 +1,0 @@
-<group name="data">
-{{ line | ORPHRASE }}
-</group>

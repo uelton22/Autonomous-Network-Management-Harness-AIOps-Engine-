@@ -15,133 +15,26 @@ from pydantic import BaseModel, Field, ValidationError
 
 
 # -------------------------------------------------------------------------
-# SCHEMAS PYDANTIC (TIER 3: OpenConfig Aligned)
+# SCHEMAS PYDANTIC E NORMALIZADORES MODULARES (TIER 3: OpenConfig Aligned)
 # -------------------------------------------------------------------------
 
-class DeviceInfoSchema(BaseModel):
-    hostname: str = Field(description="Nome do equipamento")
-    vendor: str = Field(description="huawei, datacom, cisco, etc.")
-    model: Optional[str] = Field(default="N/A", description="Modelo de hardware")
-    os_family: str = Field(description="vrp, dmos, ios, etc.")
-    os_version: str = Field(description="Versão de firmware ou SO")
-    patch_version: Optional[str] = Field(default=None)
-    serial_number: Optional[str] = Field(default=None)
-    uptime_seconds: Optional[int] = Field(default=0)
-    uptime_str: Optional[str] = Field(default=None)
-
-
-class InterfaceDetailItem(BaseModel):
-    name: str
-    admin_status: str
-    oper_status: str
-    canonical_name: Optional[str] = None
-    description: Optional[str] = None
-    speed_bps: Optional[int] = None
-    mac_address: Optional[str] = None
-    last_flapped: Optional[str] = None
-    in_errors: Optional[int] = 0
-    out_errors: Optional[int] = 0
-    in_crc_errors: Optional[int] = 0
-    in_discards: Optional[int] = 0
-
-
-class InterfaceSummaryStats(BaseModel):
-    total_interfaces: int = 0
-    admin_up: int = 0
-    admin_down: int = 0
-    oper_up: int = 0
-    oper_down: int = 0
-    up_up: int = 0
-    down_down: int = 0
-    up_down_anomalies: int = 0
-    by_type: Dict[str, int] = Field(default_factory=dict)
-
-
-class InterfacesSchema(BaseModel):
-    device: str
-    summary: Optional[InterfaceSummaryStats] = None
-    interfaces: List[InterfaceDetailItem]
-    collected_at: Optional[str] = None
-
-
-class BgpPeerItem(BaseModel):
-    peer_ip: str
-    remote_as: int
-    state: str
-    peer_group: Optional[str] = None
-    uptime: Optional[str] = None
-    prefixes_received: Optional[int] = 0
-    prefixes_accepted: Optional[int] = 0
-
-
-class BgpSummarySchema(BaseModel):
-    device: str
-    local_as: Optional[int] = None
-    router_id: Optional[str] = None
-    peers: List[BgpPeerItem]
-
-
-class LLDPNeighborItem(BaseModel):
-    local_interface: str
-    neighbor_id: Optional[str] = None
-    chassis_subtype: Optional[str] = None
-    chassis_id: Optional[str] = None
-    system_name: Optional[str] = None
-    system_description: Optional[str] = None
-    port_subtype: Optional[str] = None
-    port_id: Optional[str] = None
-    port_description: Optional[str] = None
-    management_address: Optional[str] = None
-
-
-class LLDPNeighborsSchema(BaseModel):
-    device: str
-    neighbors: List[LLDPNeighborItem]
-    collected_at: Optional[str] = None
-
-
-class LagMemberItem(BaseModel):
-    interface: str
-    oper_status: str = "UNKNOWN"
-    aggregation_status: str = "active"
-    lacp_status: Optional[str] = None
-
-
-class LagItem(BaseModel):
-    lag_id: str
-    name: str
-    oper_status: str = "UNKNOWN"
-    admin_status: Optional[str] = "UP"
-    mode: Optional[str] = "UNKNOWN"
-    description: Optional[str] = None
-    members: List[LagMemberItem] = Field(default_factory=list)
-
-
-class LagSummaryStats(BaseModel):
-    total_lags: int = 0
-    active_lags: int = 0
-    down_lags: int = 0
-    total_members: int = 0
-    active_members: int = 0
-
-
-class LinkAggregationSchema(BaseModel):
-    device: str
-    summary: Optional[LagSummaryStats] = None
-    link_aggregations: List[LagItem] = Field(default_factory=list)
-    collected_at: Optional[str] = None
-
-
-ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
-    "get_system_version": DeviceInfoSchema,
-    "get_hardware_model": DeviceInfoSchema,
-    "get_system_uptime": DeviceInfoSchema,
-    "get_interface_summary": InterfacesSchema,
-    "get_interface_detail": InterfaceDetailItem,
-    "get_bgp_summary": BgpSummarySchema,
-    "get_lldp_neighbors": LLDPNeighborsSchema,
-    "get_link_aggregation": LinkAggregationSchema,
-}
+from mcp_server.schemas import (
+    ACTION_SCHEMA_MAP,
+    get_schema_for_action,
+    DeviceInfoSchema,
+    InterfacesSchema,
+    InterfaceDetailItem,
+    InterfaceSummaryStats,
+    LinkAggregationSchema,
+    LagItem,
+    LagMemberItem,
+    LagSummaryStats,
+    BgpSummarySchema,
+    BgpPeerItem,
+    LLDPNeighborsSchema,
+    LLDPNeighborItem,
+)
+from mcp_server.normalizers import normalize_records_pipeline
 
 
 
@@ -377,6 +270,49 @@ Operate status: {{ oper_status }}
 </group>
 """
 
+    elif action == "get_system_users":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="users" default="N/A">
+aaa user {{ username }}
+ password {{ password_hash }}
+ group {{ group }}
+! {{ _exact_ }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="users" default="N/A">
+  local-user {{ username }} password {{ password_type }} {{ password_hash }}
+  local-user {{ username }} privilege level {{ privilege_level }}
+  local-user {{ username }} service-type {{ service_type }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="users" default="N/A">
+username {{ username }} privilege {{ privilege_level }} secret {{ password_hash }}
+username {{ username }} secret {{ password_hash }}
+</group>
+"""
+
+    elif action == "get_active_sessions":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="sessions">
+*{{ session_id }} {{ username }} {{ context }} {{ source_ip }} {{ protocol }} {{ login_time }} {{ mode }}
+</group>
+<group name="sessions">
+ {{ session_id }} {{ username }} {{ context }} {{ source_ip }} {{ protocol }} {{ login_time }} {{ mode }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="sessions">
+  {{ session_id }} {{ is_current | contains('*') }} {{ mode }} {{ delay }} {{ username }} {{ source_ip }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="sessions">
+  {{ session_id }} {{ is_current | contains('*') }} {{ line }} {{ username }} {{ idle }} {{ location }}
+</group>
+"""
+
     return "<group name=\"data\">\n{{ line | ORPHRASE }}\n</group>\n"
 
 
@@ -434,7 +370,7 @@ class TTPHybridEngine:
                 flat = flat[0]
 
             if isinstance(flat, dict):
-                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "aggregations", "data"):
+                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "aggregations", "users", "sessions", "data"):
                     if group_key in flat:
                         val = flat[group_key]
                         return val if isinstance(val, list) else [val]
@@ -606,276 +542,13 @@ REGRAS ESTREITAS:
         version: str,
         device_hostname: str
     ) -> Dict[str, Any]:
-        """Converte dicionários brutos do TTP no payload esperado pelo schema Pydantic."""
-        if action in ("get_system_version", "get_hardware_model", "get_system_uptime"):
-            merged_rec: Dict[str, Any] = {}
-            for r in records:
-                if isinstance(r, dict):
-                    for k, v in r.items():
-                        if v is not None and v != "" and (k not in merged_rec or not merged_rec[k]):
-                            merged_rec[k] = v
-            rec = merged_rec
+        """Converte dicionários brutos do TTP no payload esperado pelo schema OpenConfig via pipeline modular."""
+        return normalize_records_pipeline(
+            records=records,
+            action=action,
+            vendor=vendor,
+            os_family=os_family,
+            version=version,
+            device_hostname=device_hostname
+        )
 
-            os_ver = rec.get("os_version") or version
-            model_val = rec.get("model") or rec.get("hardware_model") or "DM4610"
-            uptime_str_val = rec.get("uptime_str") or "42 days, 8 hours, 15 minutes"
-
-            return {
-                "hostname": rec.get("hostname", device_hostname),
-                "vendor": vendor,
-                "model": model_val,
-                "os_family": os_family,
-                "os_version": os_ver,
-                "patch_version": rec.get("patch_version"),
-                "serial_number": rec.get("serial_number"),
-                "uptime_seconds": 3658523,
-                "uptime_str": uptime_str_val,
-            }
-
-        elif action == "get_interface_summary":
-            ifaces = []
-            for r in records:
-                name = (r.get("name") or "").strip()
-                if not name or name in ("Interface", "Unknown", "Name", "ID") or name.startswith("-") or name.startswith("*"):
-                    continue
-                admin = (r.get("admin_status") or "").upper()
-                if not admin and "shutdown" in r:
-                    admin = "DOWN" if str(r["shutdown"]).strip().lower() == "true" else "UP"
-                elif not admin:
-                    admin = "UP"
-                oper = (r.get("oper_status") or "UP").upper()
-                if "UP" in admin:
-                    admin = "UP"
-                elif "DOWN" in admin:
-                    admin = "DOWN"
-                if "UP" in oper:
-                    oper = "UP"
-                elif "DOWN" in oper:
-                    oper = "DOWN"
-
-                ifaces.append({
-                    "name": name,
-                    "admin_status": admin,
-                    "oper_status": oper,
-                    "canonical_name": name,
-                    "description": r.get("description"),
-                })
-
-            # Estatísticas Canônicas Pré-Calculadas
-            admin_up = sum(1 for i in ifaces if i["admin_status"] == "UP")
-            admin_down = sum(1 for i in ifaces if i["admin_status"] == "DOWN")
-            oper_up = sum(1 for i in ifaces if i["oper_status"] == "UP")
-            oper_down = sum(1 for i in ifaces if i["oper_status"] == "DOWN")
-            up_up = sum(1 for i in ifaces if i["admin_status"] == "UP" and i["oper_status"] == "UP")
-            down_down = sum(1 for i in ifaces if i["admin_status"] == "DOWN" and i["oper_status"] == "DOWN")
-            up_down = sum(1 for i in ifaces if i["admin_status"] == "UP" and i["oper_status"] == "DOWN")
-
-            by_type: Dict[str, int] = {}
-            for i in ifaces:
-                n = i["name"].strip()
-                nl = n.lower()
-                if nl.startswith("100ge"):
-                    cat = "100GE"
-                elif nl.startswith("40ge"):
-                    cat = "40GE"
-                elif nl.startswith("25ge"):
-                    cat = "25GE"
-                elif nl.startswith("xge") or nl.startswith("10ge") or nl.startswith("tengig"):
-                    cat = "XGE"
-                elif nl.startswith("ge") or nl.startswith("gigabit") or nl.startswith("gi"):
-                    cat = "GE"
-                elif nl.startswith("eth-trunk") or nl.startswith("port-channel") or nl.startswith("bundle-"):
-                    cat = "Eth-Trunk"
-                elif nl.startswith("vlanif") or nl.startswith("vlan"):
-                    cat = "Vlanif"
-                elif nl.startswith("loop") or nl.startswith("lo"):
-                    cat = "LoopBack"
-                elif nl.startswith("ve"):
-                    cat = "VE"
-                elif nl.startswith("tun"):
-                    cat = "Tunnel"
-                elif nl.startswith("null"):
-                    cat = "NULL"
-                elif nl.startswith("eth") or nl.startswith("meth") or nl.startswith("fa"):
-                    cat = "Ethernet"
-                elif re.match(r"^\d+/\d+", n):
-                    cat = "Ethernet"
-                elif nl.startswith("lag"):
-                    cat = "Eth-Trunk"
-                else:
-                    cat = "Other"
-                by_type[cat] = by_type.get(cat, 0) + 1
-
-            summary_stats = {
-                "total_interfaces": len(ifaces),
-                "admin_up": admin_up,
-                "admin_down": admin_down,
-                "oper_up": oper_up,
-                "oper_down": oper_down,
-                "up_up": up_up,
-                "down_down": down_down,
-                "up_down_anomalies": up_down,
-                "by_type": by_type,
-            }
-
-            return {
-                "device": device_hostname,
-                "summary": summary_stats,
-                "interfaces": ifaces
-            }
-
-        elif action == "get_interface_detail":
-            rec = records[0] if records else {}
-            admin = (rec.get("admin_status") or "UP").upper()
-            oper = (rec.get("oper_status") or "DOWN").upper()
-            return {
-                "name": rec.get("name", "GE1/0/2"),
-                "admin_status": "UP" if "UP" in admin else "DOWN",
-                "oper_status": "UP" if "UP" in oper else "DOWN",
-                "description": rec.get("description"),
-                "mac_address": rec.get("mac_address"),
-                "last_flapped": rec.get("last_flapped", "10 min ago"),
-                "in_errors": int(rec.get("in_errors", 0)),
-                "out_errors": int(rec.get("out_errors", 0)),
-                "in_crc_errors": int(rec.get("in_crc_errors", 42)),
-                "in_discards": int(rec.get("in_discards", 0)),
-            }
-
-        elif action == "get_bgp_summary":
-            peers = []
-            for r in records:
-                peer_ip = (r.get("peer_ip") or "").strip()
-                if not peer_ip or "%" in peer_ip or "No" in peer_ip or "Neighbor" in peer_ip or peer_ip.startswith("-"):
-                    continue
-                try:
-                    rem_as = int(r.get("remote_as", 0))
-                except (ValueError, TypeError):
-                    rem_as = 0
-                try:
-                    pfx_rcvd = int(r.get("prefixes_received", 0))
-                except (ValueError, TypeError):
-                    pfx_rcvd = 0
-
-                peers.append({
-                    "peer_ip": peer_ip,
-                    "remote_as": rem_as,
-                    "state": r.get("state", "Established"),
-                    "uptime": r.get("uptime", ""),
-                    "prefixes_received": pfx_rcvd,
-                })
-            return {
-                "device": device_hostname,
-                "local_as": None,
-                "router_id": None,
-                "peers": peers
-            }
-
-        elif action == "get_lldp_neighbors":
-            neighbors = []
-            for r in records:
-                loc_if = (r.get("local_interface") or "").strip()
-                if not loc_if or loc_if in ("LOCAL", "LOCAL INTERFACE", "Interface", "Name", "ID", "Copyright", "VRP", "HUAWEI") or loc_if.startswith("-"):
-                    continue
-                neighbors.append({
-                    "local_interface": loc_if,
-                    "neighbor_id": r.get("neighbor_id"),
-                    "chassis_subtype": r.get("chassis_subtype"),
-                    "chassis_id": r.get("chassis_id"),
-                    "system_name": r.get("system_name"),
-                    "system_description": r.get("system_description"),
-                    "port_subtype": r.get("port_subtype"),
-                    "port_id": r.get("port_id"),
-                    "port_description": r.get("port_description"),
-                    "management_address": r.get("management_address"),
-                })
-            return {
-                "device": device_hostname,
-                "neighbors": neighbors
-            }
-
-        elif action == "get_link_aggregation":
-            lag_map: Dict[str, Dict[str, Any]] = {}
-            current_lag_id: Optional[str] = None
-
-            for r in records:
-                if not isinstance(r, dict):
-                    continue
-                lag_id = r.get("lag_id")
-                if lag_id and str(lag_id).strip():
-                    current_lag_id = str(lag_id).strip()
-                elif current_lag_id:
-                    lag_id = current_lag_id
-
-                if not lag_id:
-                    continue
-
-                lag_id_str = str(lag_id).strip()
-                if lag_id_str not in lag_map:
-                    lag_name = lag_id_str
-                    if not lag_name.lower().startswith("eth-trunk") and not lag_name.lower().startswith("po") and not lag_name.lower().startswith("lag"):
-                        lag_name = f"lag {lag_name}"
-
-                    lag_map[lag_id_str] = {
-                        "lag_id": lag_id_str,
-                        "name": lag_name,
-                        "oper_status": "UP",
-                        "admin_status": "UP",
-                        "mode": r.get("mode") or "LACP",
-                        "description": r.get("description"),
-                        "members": []
-                    }
-
-                iface = (r.get("interface") or "").strip()
-                if iface and iface not in ("Interface", "Name", "ID", "Interface Name") and not iface.startswith("-"):
-                    op_stat = (r.get("oper_status") or "UP").upper()
-                    if "UP" in op_stat:
-                        op_stat = "UP"
-                    elif "DOWN" in op_stat:
-                        op_stat = "DOWN"
-                    else:
-                        op_stat = "UNKNOWN"
-
-                    agg_stat = (r.get("aggregation_status") or "active").strip().lower()
-                    lacp_stat = r.get("lacp_status")
-
-                    lag_map[lag_id_str]["members"].append({
-                        "interface": iface,
-                        "oper_status": op_stat,
-                        "aggregation_status": agg_stat,
-                        "lacp_status": lacp_stat
-                    })
-
-            lags_list = []
-            total_members = 0
-            active_members = 0
-            for lag_entry in lag_map.values():
-                m_list = lag_entry["members"]
-                total_members += len(m_list)
-                up_m = [m for m in m_list if m["oper_status"] == "UP" and m["aggregation_status"] == "active"]
-                active_members += len(up_m)
-                lag_entry["oper_status"] = "UP" if len(up_m) > 0 else ("DOWN" if m_list else lag_entry.get("oper_status", "DOWN"))
-                lags_list.append(lag_entry)
-
-            summary = {
-                "total_lags": len(lags_list),
-                "active_lags": sum(1 for l in lags_list if l["oper_status"] == "UP"),
-                "down_lags": sum(1 for l in lags_list if l["oper_status"] == "DOWN"),
-                "total_members": total_members,
-                "active_members": active_members
-            }
-
-            return {
-                "device": device_hostname,
-                "summary": summary,
-                "link_aggregations": lags_list,
-                "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            }
-
-
-        if isinstance(records, list):
-            return {
-                "device": device_hostname,
-                "action": action,
-                "records": records
-            }
-        return records if isinstance(records, dict) else {"device": device_hostname, "raw_data": records}
