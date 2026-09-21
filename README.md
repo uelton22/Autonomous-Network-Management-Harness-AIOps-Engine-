@@ -54,55 +54,60 @@ O diagrama abaixo ilustra o ciclo de vida completo de uma solicitação no Harne
 ```mermaid
 flowchart TD
     subgraph OPERADOR["Operador Humano / IDE Chat"]
-        USER["Intenção do Usuário\n(Ex: 'Identifique o switch 100.75.9.252')"]
-        APPROVAL["Confirmação Human-in-the-Loop\n(Apenas se privilégio for Editor ou Full)"]
+        USER["Intenção do Usuário<br/>(Ex: 'Identifique o switch 100.75.9.252')"]
+        APPROVAL["Confirmação Human-in-the-Loop<br/>(Apenas se privilégio for Editor ou Full)"]
     end
 
     subgraph AGENT["Agente Autônomo (Cursor / Antigravity / Claude)"]
-        DECISION["Ciclo de Raciocínio & Determinação de Ação\n(AGENTS.md + Vendor Skills)"]
-        BRIEFING["Emissão de Briefing Prévio no Chat\n(Host, Privilégio, Comando, Justificativa)"]
+        DECISION["Ciclo de Raciocínio & Determinação de Ação<br/>(AGENTS.md + Vendor Skills)"]
+        BRIEFING["Emissão de Briefing Prévio no Chat<br/>(Host, Privilégio, Comando, Justificativa)"]
     end
 
     subgraph MCP["Servidor MCP NetOps (mcp_server/server.py)"]
-        GATEKEEPER["Gatekeeper de Segurança em 3 Níveis\n(security.py: READ / EDITOR / FULL)"]
-        FINGERPRINT["Progressive Fingerprint L1->L2->L3\n(fingerprinter.py: L3 Probe Determinístico)"]
-        DISPATCHER["Resolução Hierárquica Multi-Versão\n(actions.yaml: 5 Níveis de Fallback)"]
-        CMD_SEARCH["Command Reference Searcher\n(command_reference/: Busca em Manuais Oficiais)"]
+        GATEKEEPER["Gatekeeper de Segurança em 3 Níveis<br/>(security.py: READ / EDITOR / FULL)"]
+        FINGERPRINT["Progressive Fingerprint L1->L2->L3<br/>(fingerprinter.py: L3 Probe Determinístico)"]
+        DISPATCHER["Resolução Hierárquica Multi-Versão<br/>(actions.yaml: 5 Níveis de Fallback)"]
+        CMD_SEARCH["Command Reference Searcher<br/>(command_reference/: Busca em Manuais Oficiais)"]
     end
 
     subgraph NETWORK["Conectividade e Infraestrutura Real"]
-        SSH_RUNNER["SSH Runner Seguro\n(ssh_runner.py: Netmiko/Paramiko)"]
-        CACHE_TTL{"Cache TTL .raw Recente?\n(< 120 segundos)"}
-        SWITCH[("Switch / Roteador Real\n(Datacom DmOS / Huawei VRP / Cisco)")]
-        RAW_DISK[("storage/raw/*.raw\n(Persistência Física em Disco)")]
+        SSH_RUNNER["SSH Runner Seguro<br/>(ssh_runner.py: Netmiko/Paramiko)"]
+        CACHE_TTL{"Cache TTL .raw Recente?<br/>(Menor que 120s)"}
+        SWITCH[("Switch / Roteador Real<br/>(Datacom DmOS / Huawei VRP / Cisco)")]
+        RAW_DISK[("storage/raw/*.raw<br/>(Persistência Física em Disco)")]
     end
 
     subgraph PARSER["Engine Híbrido TTP & Normalização"]
-        TIER1{"Tier 1:\nTemplate no Cache?"}
-        TTP_FAST["Fast-Path TTP (< 5ms)\nstorage/templates/"]
-        TTP_HEALING["Tier 2: Auto-Cura LLM & Sandbox\n(Compilação e Teste Seguro)"]
-        TIER3["Tier 3: Validação Estrita OpenConfig\n(Pydantic Models + Normalizers)"]
-        NORM_DISK[("storage/normalized/*.json\n(Persistência Canônica de Auditoria)")]
+        TIER1{"Tier 1:<br/>Template no Cache?"}
+        TTP_FAST["Fast-Path TTP (&lt; 5ms)<br/>storage/templates/"]
+        TTP_HEALING["Tier 2: Auto-Cura LLM & Sandbox<br/>(Compilação e Teste Seguro)"]
+        TIER3["Tier 3: Validação Estrita OpenConfig<br/>(Pydantic Models + Normalizers)"]
+        NORM_DISK[("storage/normalized/*.json<br/>(Persistência Canônica de Auditoria)")]
     end
 
     USER --> DECISION
-    DECISION -->|Ação com Privilégio Elevado| BRIEFING --> APPROVAL --> GATEKEEPER
-    DECISION -->|Consulta Canônica Read| GATEKEEPER
+    DECISION -->|"Ação com Privilégio Elevado"| BRIEFING
+    BRIEFING --> APPROVAL
+    APPROVAL --> GATEKEEPER
+    DECISION -->|"Consulta Canônica Read"| GATEKEEPER
     GATEKEEPER --> FINGERPRINT
     FINGERPRINT --> DISPATCHER
     DISPATCHER --> SSH_RUNNER
     
     SSH_RUNNER --> CACHE_TTL
-    CACHE_TTL -- Não / Expirado --> SWITCH --> RAW_DISK
-    CACHE_TTL -- Sim (Válido) --> RAW_DISK
+    CACHE_TTL -->|"Não ou Expirado"| SWITCH
+    SWITCH --> RAW_DISK
+    CACHE_TTL -->|"Válido em Cache"| RAW_DISK
 
     RAW_DISK --> TIER1
-    TIER1 -- Cache Hit --> TTP_FAST --> TIER3
-    TIER1 -- Cache Miss --> TTP_HEALING --> TTP_FAST
+    TIER1 -->|"Cache Hit"| TTP_FAST
+    TTP_FAST --> TIER3
+    TIER1 -->|"Cache Miss"| TTP_HEALING
+    TTP_HEALING --> TTP_FAST
     
     TIER3 --> NORM_DISK
-    TIER3 -->|Apenas JSON Normalizado\n(Zero RAW Leaks)| AGENT
-    AGENT -->|Tabelas e Conclusões Claras| OPERADOR
+    TIER3 -->|"JSON Normalizado (Zero RAW)"| AGENT
+    AGENT -->|"Tabelas e Conclusões Claras"| OPERADOR
 ```
 
 ---
