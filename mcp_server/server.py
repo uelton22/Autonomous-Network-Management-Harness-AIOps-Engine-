@@ -18,6 +18,7 @@ from mcp_server.ssh_runner import SSHRunner
 from mcp_server.fingerprinter import progressive_fingerprint
 from mcp_server.ttp_engine import TTPHybridEngine
 from mcp_server.command_ref_search import CommandReferenceSearcher
+from mcp_server.vault import vault
 
 
 # Inicialização dos componentes
@@ -40,11 +41,35 @@ def _load_actions() -> Dict[str, Any]:
 # -------------------------------------------------------------------------
 
 @server.tool()
+def list_credential_profiles() -> str:
+    """
+    Lista todos os perfis de acesso SSH e credenciais cadastrados no Cofre (registry/credentials.yaml).
+    Retorna nome do perfil, descrição, usuário, porta SSH e se é o perfil padrão.
+    ATENÇÃO DE SEGURANÇA: As senhas e segredos são rigorosamente ocultados (********).
+    Utilize para descobrir quais perfis estão disponíveis para conexão aos equipamentos de rede.
+    """
+    try:
+        profiles = vault.list_profiles()
+        return json.dumps({
+            "status": "success",
+            "default_profile": vault.default_profile_name,
+            "total_profiles": len(profiles),
+            "profiles": profiles
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "error": str(e)
+        }, indent=2, ensure_ascii=False)
+
+
+@server.tool()
 def execute_command(
     host: str,
     command: str,
     platform_type: str = "generic",
-    privilege_level: str = "read"
+    privilege_level: str = "read",
+    credential_profile: str = ""
 ) -> str:
     """
     [USO RESTRITO / BAIXO NÍVEL]: Executa comando CLI em equipamento de rede via SSH e persiste o output (.raw) em disco.
@@ -56,13 +81,15 @@ def execute_command(
       command: Comando exato a ser executado
       platform_type: datacom_dmos | huawei_vrp | cisco_iosxe | generic
       privilege_level: read (apenas show/display) | editor (config scoped) | full (admin total)
+      credential_profile: Nome do perfil de acesso no cofre (opcional, ex: 'zabbix', 'admin')
     """
     try:
         result = ssh_runner.execute_command(
             host=host,
             command=command,
             platform_type=platform_type,
-            privilege_level=privilege_level
+            privilege_level=privilege_level,
+            credential_profile=credential_profile or None
         )
         return json.dumps(result, indent=2, ensure_ascii=False)
     except PrivilegeViolationError as pve:
@@ -148,13 +175,14 @@ def run_adhoc_action(
     command: str,
     action_name: str,
     privilege_level: str = "read",
-    force_refresh: bool = False
+    force_refresh: bool = False,
+    credential_profile: str = ""
 ) -> str:
     """
     Executa comando CLI dinâmico/ad-hoc (não catalogado em actions.yaml) E OBRIGA a normalização via Pipeline TTP:
-    1. Descobre a plataforma do host via Zero-Knowledge Fingerprint.
+    1. Descobre a plataforma do host via Zero-Knowledge Fingerprint (usando o perfil de credenciais indicado).
     2. Valida o nível de privilégio via Gatekeeper de Segurança em 3 Níveis.
-    3. Executa via SSH (ou reutiliza .raw recente em cache se force_refresh=False) e persiste o .raw em disco.
+    3. Executa via SSH com o perfil do cofre (ou reaproveita .raw recente em cache) e persiste o .raw em disco.
     4. Aciona o TTP Hybrid Engine para síntese determinística ou auto-cura na sandbox local.
     5. Persiste o template gerado em storage/templates/{action_name}/ para reuso instantâneo (< 5ms).
     6. Salva o resultado normalizado em storage/normalized/ para conferência humana e retorna json_path.
@@ -166,10 +194,11 @@ def run_adhoc_action(
       action_name: Nome semântico da ação canônica (ex: 'get_lldp_neighbors', 'get_mac_table')
       privilege_level: read (padrão) | editor | full
       force_refresh: Se True, força nova conexão SSH ignorando o cache local de .raw
+      credential_profile: Nome do perfil de acesso no cofre (opcional, ex: 'zabbix', 'admin')
     """
     try:
         # 1. Descoberta de SO
-        fp = progressive_fingerprint(host, ssh_runner)
+        fp = progressive_fingerprint(host, ssh_runner, credential_profile=credential_profile or None)
         vendor_key = f"{fp.vendor}_{fp.os_family}"
 
         # 2. Execução segura SSH (salva .raw em disco ou reaproveita recente)
@@ -178,7 +207,8 @@ def run_adhoc_action(
             command=command,
             platform_type=vendor_key,
             privilege_level=privilege_level,
-            force_refresh=force_refresh
+            force_refresh=force_refresh,
+            credential_profile=credential_profile or None
         )
 
         # 3. Lê o .raw gerado em disco
@@ -198,6 +228,7 @@ def run_adhoc_action(
             "status": "success",
             "action": action_name,
             "host": host,
+            "profile_used": exec_res.get("profile_used"),
             "vendor": fp.vendor,
             "os_family": fp.os_family,
             "command_executed": command,
@@ -229,16 +260,21 @@ def run_adhoc_action(
 
 
 @server.tool()
-def discover_device(host: str) -> str:
+def discover_device(host: str, credential_profile: str = "") -> str:
     """
     Identifica de forma progressiva (Zero-Knowledge) o fabricante, SO e versão do equipamento.
     Nível 1 (Banner Grab) -> Nível 2 (Prompt Handshake) -> Nível 3 (CLI Probe).
+    
+    Parâmetros:
+      host: Endereço IP ou hostname do equipamento
+      credential_profile: Nome do perfil de acesso no cofre (opcional, ex: 'zabbix', 'admin')
     """
     try:
-        res = progressive_fingerprint(host, ssh_runner)
+        res = progressive_fingerprint(host, ssh_runner, credential_profile=credential_profile or None)
         return json.dumps({
             "status": "success",
             "host": host,
+            "credential_profile": credential_profile or vault.default_profile_name,
             "metadata": res.to_dict()
         }, indent=2, ensure_ascii=False)
     except Exception as e:
@@ -255,15 +291,24 @@ def run_canonical_action(
     action: str,
     privilege_level: str = "read",
     interface_name: str = "",
-    force_refresh: bool = False
+    force_refresh: bool = False,
+    credential_profile: str = ""
 ) -> str:
     """
     Executa uma ação canônica (OpenConfig-aligned):
-    1. Descobre a plataforma do equipamento.
+    1. Descobre a plataforma do equipamento utilizando o perfil de credenciais informado (ou padrão).
     2. Resolve o comando determinístico em registry/actions.yaml.
-    3. Executa via SSH (ou reutiliza .raw recente em cache se force_refresh=False) e salva .raw em disco.
+    3. Executa via SSH com o perfil do cofre (ou reutiliza .raw recente em cache) e salva .raw em disco.
     4. Processa via Pipeline Híbrido TTP (Tier 1 Cache < 5ms -> Tier 2 LLM Sandbox -> Tier 3 Pydantic).
     5. Salva o resultado normalizado em storage/normalized/ para conferência humana e retorna json_path.
+    
+    Parâmetros:
+      host: Endereço IP ou hostname do equipamento alvo
+      action: Nome da ação cadastrada em actions.yaml (ex: 'get_system_version', 'get_system_users')
+      privilege_level: read (padrão) | editor | full
+      interface_name: Nome da interface se aplicável
+      force_refresh: Força nova conexão ignorando cache recente de .raw
+      credential_profile: Nome do perfil de acesso no cofre (opcional, ex: 'zabbix', 'admin')
     """
     try:
         actions_data = _load_actions()
@@ -278,15 +323,10 @@ def run_canonical_action(
         action_def = atomic_actions[action]
 
         # 1. Descoberta de SO e Versão Granular
-        fp = progressive_fingerprint(host, ssh_runner)
+        fp = progressive_fingerprint(host, ssh_runner, credential_profile=credential_profile or None)
         platforms = action_def.get("platforms", {})
 
         # Hierarquia de Resolução Multi-Versão:
-        # 1. Versão exata: ex: huawei_vrp_v800, cisco_nxos_10_x, datacom_dmos_12_0_2
-        # 2. Ramo de release (prefixo): ex: huawei_vrp_v8, datacom_dmos_12
-        # 3. Família de SO: ex: huawei_vrp, cisco_iosxe, datacom_dmos
-        # 4. Fabricante: ex: huawei, cisco, datacom
-        # 5. Genérico: generic
         v_clean = fp.major_version.lower().replace(".", "_")
         v_prefix = v_clean.split("_")[0] if "_" in v_clean else v_clean
 
@@ -325,7 +365,8 @@ def run_canonical_action(
             command=cli_command,
             platform_type=vendor_key,
             privilege_level=privilege_level,
-            force_refresh=force_refresh
+            force_refresh=force_refresh,
+            credential_profile=credential_profile or None
         )
 
         # 4. Lê o .raw gerado em disco
@@ -345,6 +386,7 @@ def run_canonical_action(
             "status": "success",
             "action": action,
             "host": host,
+            "profile_used": exec_res.get("profile_used"),
             "vendor": fp.vendor,
             "os_family": fp.os_family,
             "command_executed": cli_command,
@@ -377,11 +419,18 @@ def run_canonical_action(
 def run_workflow_dag(
     host: str,
     workflow_name: str = "diagnose_down_interfaces",
-    privilege_level: str = "read"
+    privilege_level: str = "read",
+    credential_profile: str = ""
 ) -> str:
     """
     Executa um Workflow DAG composto de ações dependentes com agregação OpenConfig.
     Exemplo: diagnose_down_interfaces (resumo -> filtro determinístico sem LLM -> detalhes das caídas -> payload consolidado).
+    
+    Parâmetros:
+      host: Endereço IP ou hostname do equipamento alvo
+      workflow_name: Nome do workflow registrado em actions.yaml
+      privilege_level: Nível de privilégio exigido
+      credential_profile: Nome do perfil de acesso no cofre (opcional, ex: 'zabbix', 'admin')
     """
     try:
         actions_data = _load_actions()
@@ -399,7 +448,8 @@ def run_workflow_dag(
         summary_res_str = run_canonical_action(
             host=host,
             action="get_interface_summary",
-            privilege_level=privilege_level
+            privilege_level=privilege_level,
+            credential_profile=credential_profile
         )
         summary_res = json.loads(summary_res_str)
 
@@ -424,6 +474,7 @@ def run_workflow_dag(
                 "status": "success",
                 "workflow": workflow_name,
                 "host": host,
+                "profile_used": summary_res.get("profile_used"),
                 "summary": "Todas as interfaces estão operacionais (UP). Nenhuma anomalia encontrada.",
                 "total_interfaces_evaluated": len(all_interfaces),
                 "down_interfaces_count": 0,
@@ -438,7 +489,8 @@ def run_workflow_dag(
                 host=host,
                 action="get_interface_detail",
                 privilege_level=privilege_level,
-                interface_name=iface_name
+                interface_name=iface_name,
+                credential_profile=credential_profile
             )
             detail_res = json.loads(detail_res_str)
             if detail_res.get("status") == "success":
@@ -447,6 +499,7 @@ def run_workflow_dag(
         # Etapa 4: Agregação Canônica OpenConfig e Persistência de Auditoria
         aggregated_payload = {
             "device": host,
+            "profile_used": summary_res.get("profile_used"),
             "total_interfaces": len(all_interfaces),
             "down_interfaces_count": len(down_interfaces),
             "summary_list": all_interfaces,
@@ -464,8 +517,16 @@ def run_workflow_dag(
             "status": "success",
             "workflow": workflow_name,
             "host": host,
+            "profile_used": summary_res.get("profile_used"),
             "json_path": str(dag_json_file.resolve()),
             "openconfig_aggregated": aggregated_payload
+        }, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "workflow": workflow_name,
+            "error": str(e)
         }, indent=2, ensure_ascii=False)
 
     except Exception as e:

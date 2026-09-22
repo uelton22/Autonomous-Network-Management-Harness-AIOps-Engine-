@@ -6,6 +6,10 @@
 .env
 *.env
 !.env.example
+registry/credentials.yaml
+!registry/credentials.example.yaml
+storage/vault/
+
 
 # --- Python & Bytecode ---
 __pycache__/

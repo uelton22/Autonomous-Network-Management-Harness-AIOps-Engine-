@@ -30,10 +30,11 @@ O **Autonomous Network Management Harness** é uma plataforma de automação e A
 5. [Catálogo Canônico e Schemas OpenConfig](#5-catálogo-canônico-e-schemas-openconfig)
 6. [Instalação e Configuração](#6-instalação-e-configuração)
 7. [Configuração do Servidor MCP](#7-configuração-do-servidor-mcp)
-8. [Execução e Validação Automatizada](#8-execução-e-validação-automatizada)
-9. [Exemplos Práticos de Operação](#9-exemplos-práticos-de-operação)
-10. [Roadmap & Próximas Funcionalidades (Zabbix & Graylog)](#10-roadmap--próximas-funcionalidades-zabbix--graylog)
-11. [Decisões Arquiteturais e Referências (ADRs/Rules/Skills)](#11-decisões-arquiteturais-e-referências-adrsrulesskills)
+8. [Operação Autônoma com LLM Local (Ollama / vLLM)](#8-operação-autônoma-com-llm-local-ollama--vllm)
+9. [Execução e Validação Automatizada](#9-execução-e-validação-automatizada)
+10. [Exemplos Práticos de Operação](#10-exemplos-práticos-de-operação)
+11. [Roadmap & Próximas Funcionalidades (Zabbix & Graylog)](#11-roadmap--próximas-funcionalidades-zabbix--graylog)
+12. [Decisões Arquiteturais e Referências (ADRs/Rules/Skills)](#12-decisões-arquiteturais-e-referências-adrsrulesskills)
 
 ---
 
@@ -205,9 +206,16 @@ Para diagnósticos complexos que envolvem dependências entre comandos (ex: audi
 LLM_ssh_project/
 ├── AGENTS.md                          # Guia mestre de comportamento e governança do Agente AIOps
 ├── README.md                          # Documentação executiva e técnica do projeto
-├── .env.example                       # Modelo de variáveis de ambiente e credenciais SSH
+├── requirements.txt                   # Dependências do projeto (MCP, Netmiko, TTP, OpenAI, Rich)
+├── .env.example                       # Modelo de variáveis de ambiente, SSH e LLM Local
 ├── .cursorrules                       # Regras de orquestração para Cursor IDE
 ├── CLAUDE.md                          # Regras de orquestração para Claude Code
+│
+├── agent/                             # Agente AIOps Standalone para LLMs Locais (Ollama/vLLM)
+│   ├── __init__.py                    # Pacote do Agente
+│   ├── cli.py                         # Interface Interativa no Terminal (CLI com Rich)
+│   ├── runner.py                      # Orquestrador do loop de Tool Calling e System Prompt
+│   └── tools.py                       # Mapeamento de tools MCP para OpenAI Function Calling
 │
 ├── registry/                          # Catálogo declarativo central
 │   ├── actions.yaml                   # Ações atômicas multi-versão e workflows DAG
@@ -314,19 +322,33 @@ O Harness expõe um catálogo de ações padronizadas que mapeiam a sintaxe real
    ```
    *(Dependências principais: `mcp`, `netmiko`, `paramiko`, `ttp`, `pydantic`, `pyyaml`, `rich`, `python-dotenv`)*
 
-3. **Configure as credenciais no arquivo `.env`**:
-   Copie o modelo e insira suas credenciais de laboratório/produção:
+3. **Configure as credenciais e perfis de acesso no Cofre (Vault)**:
+   O Harness utiliza um **Cofre de Perfis Dinâmicos** (`registry/credentials.yaml`), permitindo cadastrar múltiplos usuários, portas e senhas segregadas (ex: `zabbix`, `admin`, `noc_core`), sem prender o sistema a dados estáticos únicos.
+   
+   Copie o modelo de perfis de exemplo:
    ```bash
-   cp .env.example .env
+   cp registry/credentials.example.yaml registry/credentials.yaml
    ```
-   Edite o arquivo `.env`:
-   ```dotenv
-   NETOPS_SSH_USER=seu_usuario
-   NETOPS_SSH_PASSWORD=sua_senha
-   NETOPS_SSH_PORT=22
-   # NETOPS_SSH_SECRET=sua_senha_enable
-   NETOPS_SSH_DELAY=1.0
+   
+   Configure seus perfis em `registry/credentials.yaml`:
+   ```yaml
+   default_profile: "zabbix"
+
+   profiles:
+     zabbix:
+       description: "Perfil de auditoria e telemetria (leitura)"
+       username: "zabbix"
+       password: "env:NETOPS_SSH_PASSWORD"  # Suporta env:VAR ou enc:TOKEN
+       port: 22
+
+     admin:
+       description: "Perfil administrativo principal"
+       username: "admin"
+       password: "enc:gAAAAABn..."          # Criptografado com Fernet
+       port: 22
    ```
+
+   *(Opcional / Legado: O arquivo `.env` pode ser usado para definir variáveis mestras como `NETOPS_SSH_PASSWORD` e `NETOPS_VAULT_KEY`)*.
 
 ---
 
@@ -362,16 +384,86 @@ O servidor MCP [`mcp_server/server.py`](file:///Users/uelton/Documents/Desenvolv
 ```
 
 ### Ferramentas MCP Disponíveis
-* **`run_canonical_action`**: Executa ação do catálogo `actions.yaml` com resolução multi-versão, TTP e Pydantic.
-* **`run_adhoc_action`**: Executa comando dinâmico não catalogado, gerando template TTP e schema com isolamento estrito de `.raw`.
-* **`discover_device`**: Executa descoberta progressiva L1 $\rightarrow$ L2 $\rightarrow$ L3 retornando metadados de SO, modelo e release.
+* **`list_credential_profiles`**: Lista todos os perfis de acesso SSH cadastrados no Vault (com senhas estritamente mascaradas como `********`).
+* **`run_canonical_action`**: Executa ação do catálogo `actions.yaml` com resolução multi-versão, TTP e Pydantic (aceita parâmetro opcional `credential_profile`).
+* **`run_adhoc_action`**: Executa comando dinâmico não catalogado, gerando template TTP e schema com isolamento estrito de `.raw` (aceita `credential_profile`).
+* **`discover_device`**: Executa descoberta progressiva L1 $\rightarrow$ L2 $\rightarrow$ L3 retornando metadados de SO, modelo e release (aceita `credential_profile`).
 * **`search_command_reference`**: Pesquisa nos manuais oficiais particionados por fabricante e versão de SO.
 * **`run_workflow_dag`**: Executa investigações compostas com filtros em código local e agregação OpenConfig.
 * **`execute_command`**: Execução de baixo nível para testes de sintaxe (não retorna dump de CLI para o chat).
 
+### 7.4 Comandos Rápidos no Chat da IDE (Harness Chat Commands)
+Para proporcionar a máxima agilidade sem a necessidade de comandos longos ou uso exclusivo do terminal CLI, o Harness suporta comandos diretos na caixa de diálogo do chat (Antigravity / Cursor / Claude):
+
+* **`/profiles`** ou **`/profile`**: Lista imediatamente todos os perfis de credenciais configurados no cofre (`registry/credentials.yaml`) em formato de tabela Markdown, exibindo usuário, porta, status ativo/padrão e senhas devidamente mascaradas (`********`).
+* **`/actions`**: Exibe o catálogo completo de ações canônicas cadastradas (`actions.yaml`) com sintaxes e modelos OpenConfig suportados.
+* **`/vault`**: Exibe o status de segurança do cofre de credenciais e tipo de criptografia ativa (Fernet).
+* **`/help`**: Apresenta a lista de atalhos e exemplos de perguntas em linguagem natural para operação dos switches.
+
 ---
 
-## 8. Execução e Validação Automatizada
+## 8. Operação Autônoma com LLM Local (Ollama / vLLM)
+
+Além de ser utilizado dentro de IDEs (Cursor, Antigravity, Claude Code), o projeto possui um **Agente Standalone Interativo** em `agent/cli.py`, permitindo operar o Harness diretamente pelo terminal com **LLMs locais e soberanas** (como Qwen 2.5, Llama 3.1/3.3 ou DeepSeek) rodando via **Ollama**, **vLLM** ou **LM Studio**.
+
+### 8.1 Por que usar uma LLM Local com este Harness?
+* **Privacidade Absoluta (Zero Data Leak)**: IPs de backbone, nomes de roteadores, senhas e topologia nunca saem da infraestrutura do provedor.
+* **Tolerância a Contexto Limitado**: Como o Harness isola o `.raw` em disco e entrega apenas JSONs canônicos OpenConfig ultra compactos (< 2 KB), modelos locais de 8B ou 14B processam as coletas com máxima precisão e sem saturação de contexto.
+* **Custo Zero de Tokens**: O motor TTP em Python faz o trabalho computacional pesado de parsing (< 5ms); a LLM atua apenas como tomadora de decisão lógica e geradora de relatórios.
+
+### 8.2 Passo a Passo com Ollama
+
+1. **Instale e inicie o Ollama com o modelo recomendado**:
+   Recomendamos a família **Qwen 2.5** (14B ou 32B) pelo excelente suporte nativo a Function Calling e fluência em Português:
+   ```bash
+   ollama run qwen2.5:14b
+   # ou para ambientes com menor VRAM:
+   ollama run llama3.1:8b
+   ```
+
+2. **Configure o `.env` para apontar para a LLM local**:
+   ```dotenv
+   LLM_BASE_URL=http://localhost:11434/v1
+   LLM_MODEL=qwen2.5:14b
+   LLM_API_KEY=ollama
+   LLM_TEMPERATURE=0.1
+   ```
+
+3. **Inicie o Terminal Interativo do Agente**:
+   ```bash
+   source .venv/bin/activate
+   python3 -m agent.cli
+   ```
+
+4. **Ou execute comandos pontuais diretamente (One-Shot CLI)**:
+   ```bash
+   python3 -m agent.cli "Identifique o switch 10.0.0.1 e liste os usuários locais configurados"
+   ```
+
+### 8.3 Comandos Úteis do Terminal Interativo:
+* `/profiles`: Lista todos os perfis de credenciais SSH configurados no Vault em uma tabela elegante com senhas mascaradas.
+* `/profile <nome>`: Altera o perfil SSH ativo para a sessão (ex: `/profile zabbix`, `/profile admin`).
+* `/model <nome>`: Troca de modelo dinamicamente (ex: `/model llama3.1:8b`).
+* `/clear`: Limpa o histórico de mensagens mantendo as regras de segurança ativas.
+* `/status`: Revalida o status e modelos disponíveis na LLM local e exibe o cabeçalho.
+* `/help`: Exibe a lista de comandos e exemplos operacionais.
+* `/exit` ou `/quit`: Encerra a sessão.
+
+### 8.4 Cofre de Perfis Dinâmicos & Segurança de Senhas (Vault)
+O Harness conta com uma camada enterprise de gerenciamento de credenciais via [`mcp_server/vault.py`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/mcp_server/vault.py):
+* **Multi-Perfil Segregado**: Permite cadastrar credenciais distintas por finalidade (ex: `zabbix` com privilégios restritos de monitoramento, `admin` para NOC/engenharia).
+* **Zero Senhas em Claro (Zero Leak)**: Qualquer listagem via MCP (`list_credential_profiles`) ou terminal (`/profiles`) exibe estritamente `********` no campo de senha.
+* **Criptografia Simétrica Fernet**: Senhas podem ser cifradas no disco com o utilitário nativo:
+  ```bash
+  python3 -m mcp_server.vault --encrypt "SuaSenhaSegura@2026"
+  # Retorna: enc:gAAAAABn... para colar em credentials.yaml
+  ```
+* **Resolução Dinâmica de Ambiente**: Suporta a sintaxe `password: "env:NETOPS_SSH_PASSWORD"`.
+* **Detecção Inteligente pelo Agente**: O operador pode solicitar conexões informando o perfil ou usuário/porta na pergunta (ex: *"Identifique o switch 10.0.0.1 usando o perfil zabbix"*), e a LLM direciona a chamada com `credential_profile="zabbix"`.
+
+---
+
+## 9. Execução e Validação Automatizada
 
 Para validar a integridade de todos os componentes do sistema, execute a suíte de testes de ponta a ponta:
 
@@ -380,14 +472,20 @@ source .venv/bin/activate
 python3 -m harness.run_harness_test
 ```
 
-### O que a suíte valida:
+Também é possível executar a suíte de testes unitários isolada do Vault:
+```bash
+python3 -m unittest discover tests
+```
+
+### O que a suíte valida (4 Testes de Ponta a Ponta):
 1. **Gatekeeper de Segurança**: Testa matriz de comandos proibidos e autorizados nos 3 níveis (`read`, `editor`, `full`), garantindo bloqueio de 100% das ações indevidas.
 2. **Engine TTP Híbrido**: Valida o ciclo completo de Cache Miss $\rightarrow$ Síntese Sandbox $\rightarrow$ Promoção $\rightarrow$ Cache Hit (< 5ms na 2ª vez) com validação estrita em modelo Pydantic.
-3. **Conexão Live em Equipamento Real**: Executa conexão SSH real no switch, valida a identificação L3 determinística e persiste o `.raw` em disco e o `.json` normalizado.
+3. **Cofre de Credenciais & Perfis Dinâmicos (Vault)**: Valida isolamento, mascaramento incondicional de senhas (`********`), parsing de YAML e resolução de segredos.
+4. **Conexão Live em Equipamento Real**: Executa conexão SSH real no switch via perfil selecionado, valida a identificação L3 determinística e persiste o `.raw` em disco e o `.json` normalizado.
 
 ---
 
-## 9. Exemplos Práticos de Operação
+## 10. Exemplos Práticos de Operação
 
 ### Exemplo 1: Identificação de Equipamento e Firmware
 **Operador no Chat**:
@@ -411,16 +509,16 @@ python3 -m harness.run_harness_test
 
 ---
 
-## 10. Roadmap & Próximas Funcionalidades (AIOps Enterprise)
+## 11. Roadmap & Próximas Funcionalidades (AIOps Enterprise)
 
 O Harness está evoluindo ativamente para integrar-se ao ecossistema de observabilidade, telemetria e gestão de eventos de provedores de internet e data centers:
 
-### 10.1 Integração com Zabbix (Gestão Autônoma de Incidentes & ACK Inteligente)
+### 11.1 Integração com Zabbix (Gestão Autônoma de Incidentes & ACK Inteligente)
 * **Triagem e Diagnóstico Prévio de Alarmes**: Ao receber um webhook de alarme ou trigger do Zabbix (ex: interface física em status `DOWN`, aumento anômalo de latência, queda de sessão BGP/OSPF, alta utilização de CPU/memória), o Harness conecta-se autonomamente ao equipamento afetado antes mesmo do acionamento de um analista de plantão.
 * **Reconhecimento Inteligente com Diagnóstico (Auto-ACK)**: O Harness gera um ACK automático no evento do Zabbix, enriquecendo o incidente com um relatório pré-diagnóstico estruturado (ex: erros de CRC acumulados na porta, transceiver óptico com potência atenuada em dBm, processo do sistema consumindo CPU).
 * **Validação de Restabelecimento**: Confirma se a normalização do alarme no switch foi validada no plano de dados e no estado operacional antes de encerrar o ticket.
 
-### 10.2 Integração com Graylog (Centralização e Correlação Temporal de Logs)
+### 11.2 Integração com Graylog (Centralização e Correlação Temporal de Logs)
 * **Análise Contextual de Syslog**: Busca automatizada no cluster Graylog por mensagens de syslog e traps SNMP geradas pelo equipamento na janela temporal do incidente (últimos 5 a 60 minutos).
 * **Detecção de Falhas Ocultas e Padrões de Flap**: Cruzamento e correlação de eventos intermitentes difíceis de capturar em tempo real, tais como:
   - Flapping de enlaces físicos (`LINK_DOWN` / `LINK_UP`) e renegociações contínuas de LACP/Eth-Trunk;
@@ -430,7 +528,7 @@ O Harness está evoluindo ativamente para integrar-se ao ecossistema de observab
 
 ---
 
-## 11. Decisões Arquiteturais e Referências (ADRs/Rules/Skills)
+## 12. Decisões Arquiteturais e Referências (ADRs/Rules/Skills)
 
 ### Architecture Decision Records (ADRs)
 * [ADR-001: Harness Orientado a Arquivos Declarativos (Markdown/YAML First)](docs/adrs/ADR-001-harness-markdown-first.md)

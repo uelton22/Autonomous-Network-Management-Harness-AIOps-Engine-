@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from mcp_server.vault import vault, CredentialProfile
+
 
 class DeviceFingerprintResult:
     def __init__(
@@ -105,31 +107,31 @@ def inspect_banner(banner: str) -> Optional[DeviceFingerprintResult]:
 _FINGERPRINT_CACHE: Dict[str, DeviceFingerprintResult] = {}
 
 
-def probe_real_device(host: str) -> Optional[DeviceFingerprintResult]:
+def probe_real_device(host: str, credential_profile: Optional[str] = None) -> Optional[DeviceFingerprintResult]:
     """
     Nível 3: Conecta via SSH no dispositivo real, detecta prompt e executa comandos
     de inspeção de versão determinísticos com 100% de confiança (L3_PROBE).
+    Utiliza as credenciais do perfil solicitado (ou default) do Vault.
     """
     try:
         from netmiko import ConnectHandler
 
-        port = int(os.getenv("NETOPS_SSH_PORT", "22"))
-        user = os.getenv("NETOPS_SSH_USER", "admin")
-        pwd = os.getenv("NETOPS_SSH_PASSWORD", "admin")
-        secret = os.getenv("NETOPS_SSH_SECRET")
-        delay = float(os.getenv("NETOPS_SSH_DELAY", "1.0"))
+        profile = vault.get_profile(credential_profile)
 
         device_params = {
             "device_type": "generic_termserver",
             "host": host,
-            "port": port,
-            "username": user,
-            "password": pwd,
+            "port": profile.port,
+            "username": profile.username,
+            "password": profile.password,
             "timeout": 15,
-            "global_delay_factor": delay,
+            "global_delay_factor": profile.delay,
         }
-        if secret:
-            device_params["secret"] = secret
+        if profile.secret:
+            device_params["secret"] = profile.secret
+        if profile.ssh_key_path:
+            device_params["use_keys"] = True
+            device_params["key_file"] = profile.ssh_key_path
 
         with ConnectHandler(**device_params) as conn:
             prompt = conn.find_prompt()
@@ -280,28 +282,35 @@ def _parse_huawei_version_output(out_vrp: str) -> DeviceFingerprintResult:
     )
 
 
-def progressive_fingerprint(host: str, ssh_runner=None) -> DeviceFingerprintResult:
+def progressive_fingerprint(
+    host: str,
+    ssh_runner=None,
+    credential_profile: Optional[str] = None
+) -> DeviceFingerprintResult:
     """
     Executa o fluxo de descoberta determinística em 3 níveis:
     1. Tenta L3 Deterministic Probe CLI (conecta via SSH para ler a versão real com 100% de precisão).
     2. Se falhar a autenticação SSH ou conexão, utiliza L1 Banner Grab como fallback.
     3. Se tudo falhar, retorna FALLBACK genérico.
     """
-    if host in _FINGERPRINT_CACHE:
-        return _FINGERPRINT_CACHE[host]
+    profile = vault.get_profile(credential_profile)
+    cache_key = f"{host}_{profile.name}"
 
-    # Prioridade 1: L3 Probe no equipamento real (único que garante a versão exata do firmware)
-    real_res = probe_real_device(host)
+    if cache_key in _FINGERPRINT_CACHE:
+        return _FINGERPRINT_CACHE[cache_key]
+
+    # Prioridade 1: L3 Probe no equipamento real com as credenciais do perfil
+    real_res = probe_real_device(host, credential_profile=credential_profile)
     if real_res and real_res.confidence >= 0.90:
-        _FINGERPRINT_CACHE[host] = real_res
+        _FINGERPRINT_CACHE[cache_key] = real_res
         return real_res
 
     # Prioridade 2: Nível 1 - Banner Grab (quando SSH não autentica)
-    banner = grab_tcp_banner(host)
+    banner = grab_tcp_banner(host, port=profile.port)
     if banner:
         banner_res = inspect_banner(banner)
         if banner_res:
-            _FINGERPRINT_CACHE[host] = banner_res
+            _FINGERPRINT_CACHE[cache_key] = banner_res
             return banner_res
 
     # Prioridade 3: Fallback padrão
@@ -312,5 +321,6 @@ def progressive_fingerprint(host: str, ssh_runner=None) -> DeviceFingerprintResu
         method="FALLBACK",
         confidence=0.50
     )
-    _FINGERPRINT_CACHE[host] = fallback
+    _FINGERPRINT_CACHE[cache_key] = fallback
     return fallback
+

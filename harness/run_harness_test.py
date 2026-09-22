@@ -130,23 +130,58 @@ Version                     State
     passed_count += 1
 
     # ---------------------------------------------------------------------
-    # TESTE 3: CONEXÃO REAL COM EQUIPAMENTO (se NETOPS_TARGET_HOST configurado)
+    # TESTE 3: COFRE DE CREDENCIAIS & PERFIS DINÂMICOS (VAULT)
+    # ---------------------------------------------------------------------
+    console.print("\n[bold yellow]═══ TESTE 3: Cofre de Credenciais e Perfis Dinâmicos (Vault) ═══[/bold yellow]")
+    from mcp_server.vault import get_vault
+    from mcp_server.server import list_credential_profiles
+    vault = get_vault()
+    profiles = vault.list_profiles()
+
+    t_vault = Table(title="Perfis de Credenciais Cadastrados", border_style="cyan")
+    t_vault.add_column("Perfil", style="bold white")
+    t_vault.add_column("Usuário", style="yellow")
+    t_vault.add_column("Porta", style="cyan")
+    t_vault.add_column("Senha Mascarada", style="green")
+    t_vault.add_column("Padrão", style="magenta")
+
+    for p in profiles:
+        t_vault.add_row(
+            p["name"],
+            p["username"],
+            str(p["port"]),
+            p["password"] or "None",
+            "Sim" if p["is_default"] else "Não"
+        )
+    console.print(t_vault)
+
+    # Verifica segurança estrita (Zero Clear-text Passwords)
+    raw_list_json = list_credential_profiles()
+    assert "********" in raw_list_json, "Erro de segurança: Senha não foi mascarada!"
+    for p in profiles:
+        assert p["password"] == "********", f"Perfil {p['name']} expôs senha em texto claro!"
+
+    console.print("[bold green]✔ Teste 3 APROVADO: Vault carregado com mascaramento estrito e isolamento de senhas.[/bold green]")
+    passed_count += 1
+
+    # ---------------------------------------------------------------------
+    # TESTE 4: CONEXÃO REAL COM EQUIPAMENTO (se NETOPS_TARGET_HOST configurado)
     # ---------------------------------------------------------------------
     target_host = os.getenv("NETOPS_TARGET_HOST", "100.75.9.252")
-    console.print(f"\n[bold yellow]═══ TESTE 3: Verificação Live no Equipamento Real ({target_host}) ═══[/bold yellow]")
+    console.print(f"\n[bold yellow]═══ TESTE 4: Verificação Live no Equipamento Real ({target_host}) ═══[/bold yellow]")
 
     try:
         console.print(f"Conectando via SSH ao switch no IP [cyan]{target_host}[/cyan]...")
         
-        # 1. Descoberta Zero-Knowledge
-        fp_json = discover_device(target_host)
+        # 1. Descoberta Zero-Knowledge com perfil explícito zabbix
+        fp_json = discover_device(target_host, credential_profile="zabbix")
         fp_data = json.loads(fp_json)
         console.print(f"Fingerprinting do Host: [bold green]{fp_data.get('metadata')}[/bold green]")
         
         assert fp_data.get("status") == "success", f"Falha na descoberta do host {target_host}"
         
-        # 2. Execução da Ação Canônica get_system_version
-        action_json = run_canonical_action(target_host, "get_system_version", "read")
+        # 2. Execução da Ação Canônica get_system_version com perfil zabbix
+        action_json = run_canonical_action(target_host, "get_system_version", "read", credential_profile="zabbix")
         action_data = json.loads(action_json)
         
         assert action_data.get("status") == "success", f"Falha na ação canônica: {action_data.get('error')}"
@@ -155,11 +190,11 @@ Version                     State
         console.print(f"Raw salvo em: [green]{action_data.get('raw_path')}[/green]")
         console.print(f"OpenConfig Data: [bold white]{action_data.get('openconfig_data')}[/bold white]")
 
-        console.print(f"[bold green]✔ Teste 3 APROVADO: Equipamento real {target_host} consultado e validado com sucesso.[/bold green]")
+        console.print(f"[bold green]✔ Teste 4 APROVADO: Equipamento real {target_host} consultado via perfil 'zabbix' e validado com sucesso.[/bold green]")
         passed_count += 1
     except Exception as e:
-        console.print(f"[bold red]✖ Teste 3 Falhou ao conectar no host real {target_host}: {e}[/bold red]")
-        console.print("[yellow]Verifique se a VPN/rota para 100.75.9.252 está ativa e as credenciais no .env estão corretas.[/yellow]")
+        console.print(f"[bold red]✖ Teste 4 Falhou ao conectar no host real {target_host}: {e}[/bold red]")
+        console.print("[yellow]Verifique se a VPN/rota para 100.75.9.252 está ativa e o perfil zabbix está correto no Vault.[/yellow]")
 
     console.print(Panel.fit(
         f"[bold green]Suíte Concluída: {passed_count} testes executados com sucesso![/bold green]",

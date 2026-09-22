@@ -71,3 +71,21 @@ Se um comando for bloqueado pelo Gatekeeper (`PrivilegeViolationError`), o Agent
 2. Informar o operador de forma clara sobre a recusa do Gatekeeper.
 3. Não tentar burlar a sintaxe com apelidos, abreviações ou scripts no terminal.
 
+---
+
+## 6. Cofre de Credenciais e Perfis Dinâmicos (Credentials Vault & Profiles)
+
+Para eliminar credenciais estáticas únicas e permitir segregação de acesso enterprise:
+
+1. **Catálogo Declarativo**: As credenciais são cadastradas em `registry/credentials.yaml` (ignorado no git) com template em `registry/credentials.example.yaml`.
+2. **Resolução de Segredos**:
+   - `env:VAR_NAME`: resolve dinamicamente a partir de variáveis de ambiente.
+   - `enc:TOKEN`: segredos criptografados localmente com chave Fernet de 32 bytes (via `python -m mcp_server.vault --encrypt <senha>`).
+3. **Isolamento e Mascaramento Estrito**:
+   - É **expressamente proibido** retornar, logar ou exibir senhas em texto claro.
+   - A ferramenta `list_credential_profiles` e o comando `/profiles` sempre mascaram as senhas como `********`.
+4. **Seleção de Perfil**:
+   - O operador pode especificar o perfil desejado no prompt (ex: *"usando o perfil zabbix"* ou *"com o usuário admin"*).
+   - O Agente repassa o perfil escolhido via argumento `credential_profile="<nome>"`.
+   - Na ausência de indicação, o perfil padrão (`default_profile`) é adotado transparentemente.
+

@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from mcp_server.security import enforce_privilege, PrivilegeLevel
+from mcp_server.vault import vault, CredentialProfile
 
 
 class SSHRunner:
@@ -35,20 +36,26 @@ class SSHRunner:
         platform_type: str = "generic",
         privilege_level: str = "read",
         force_refresh: bool = False,
-        cache_ttl_seconds: int = 120
+        cache_ttl_seconds: int = 120,
+        credential_profile: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Executa comando com validação prévia de privilégios e persistência do .raw em disco.
-        Conecta-se ao host real via SSH. Se existir um .raw recente (< cache_ttl_seconds)
-        para o mesmo host e comando, reaproveita o arquivo evitando conexões redundantes.
+        Conecta-se ao host real via SSH utilizando o perfil de credenciais solicitado (ou o padrão).
+        Se existir um .raw recente (< cache_ttl_seconds) para o mesmo host, perfil e comando,
+        reaproveita o arquivo evitando conexões redundantes.
         """
-        # 1. Gatekeeper de Segurança em 3 Níveis
+        # 1. Resolução do Perfil de Credenciais no Cofre
+        profile = vault.get_profile(credential_profile)
+
+        # 2. Gatekeeper de Segurança em 3 Níveis
         active_privilege = enforce_privilege(command, privilege_level, platform_type)
 
         safe_host = self._sanitize_filename_component(host)
         safe_cmd = self._sanitize_filename_component(command[:30])
+        safe_prof = self._sanitize_filename_component(profile.name)
 
-        # 2. Verificação de Cache de Curta Duração (Deduplicação de coletas)
+        # 3. Verificação de Cache de Curta Duração (Deduplicação de coletas)
         if not force_refresh:
             pattern = f"{safe_host}_*_{safe_cmd}.raw"
             existing_raws = sorted(
@@ -68,6 +75,9 @@ class SSHRunner:
                         "command": command,
                         "platform_type": platform_type,
                         "privilege_level": active_privilege.value,
+                        "profile_used": profile.name,
+                        "username_used": profile.username,
+                        "port_used": profile.port,
                         "raw_path": str(existing.resolve()),
                         "raw_filename": existing.name,
                         "line_count": len(lines),
@@ -77,10 +87,10 @@ class SSHRunner:
                         "raw_preview": "[RAW ISOLADO EM DISCO - REAPROVEITADO DO CACHE LOCAL]"
                     }
 
-        # 3. Execução SSH Real no Equipamento
-        raw_stdout = self._execute_real_ssh(host, command, platform_type)
+        # 4. Execução SSH Real no Equipamento com o Perfil Resolvido
+        raw_stdout = self._execute_real_ssh(host, command, platform_type, profile=profile)
 
-        # 4. Persistência Obrigatória de .raw em Disco
+        # 5. Persistência Obrigatória de .raw em Disco
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         raw_filename = f"{safe_host}_{timestamp}_{safe_cmd}.raw"
         raw_filepath = self.raw_storage_dir / raw_filename
@@ -95,6 +105,9 @@ class SSHRunner:
             "command": command,
             "platform_type": platform_type,
             "privilege_level": active_privilege.value,
+            "profile_used": profile.name,
+            "username_used": profile.username,
+            "port_used": profile.port,
             "raw_path": str(raw_filepath.resolve()),
             "raw_filename": raw_filename,
             "line_count": len(lines),
@@ -104,28 +117,34 @@ class SSHRunner:
             "raw_preview": "[RAW ISOLADO EM DISCO - PROIBIDO LEITURA MANUAL. UTILIZE RUN_CANONICAL_ACTION OU RUN_ADHOC_ACTION]"
         }
 
-    def _execute_real_ssh(self, host: str, command: str, platform_type: str) -> str:
-        """Executa comando em switch/roteador físico via Netmiko/Paramiko."""
+    def _execute_real_ssh(
+        self,
+        host: str,
+        command: str,
+        platform_type: str,
+        profile: Optional[CredentialProfile] = None
+    ) -> str:
+        """Executa comando em switch/roteador físico via Netmiko/Paramiko com perfil de credenciais."""
+        if profile is None:
+            profile = vault.get_profile()
+
         try:
             from netmiko import ConnectHandler
-            
-            port = int(os.getenv("NETOPS_SSH_PORT", "22"))
-            user = os.getenv("NETOPS_SSH_USER", "admin")
-            pwd = os.getenv("NETOPS_SSH_PASSWORD", "admin")
-            secret = os.getenv("NETOPS_SSH_SECRET")
-            delay = float(os.getenv("NETOPS_SSH_DELAY", "1.0"))
 
             device_params = {
                 "device_type": self._map_netmiko_device_type(platform_type),
                 "host": host,
-                "port": port,
-                "username": user,
-                "password": pwd,
+                "port": profile.port,
+                "username": profile.username,
+                "password": profile.password,
                 "timeout": 20,
-                "global_delay_factor": delay,
+                "global_delay_factor": profile.delay,
             }
-            if secret:
-                device_params["secret"] = secret
+            if profile.secret:
+                device_params["secret"] = profile.secret
+            if profile.ssh_key_path:
+                device_params["use_keys"] = True
+                device_params["key_file"] = profile.ssh_key_path
 
             with ConnectHandler(**device_params) as net_connect:
                 # Terminal hygiene
@@ -136,8 +155,10 @@ class SSHRunner:
                 output = net_connect.send_command(command)
                 return output
         except Exception as e:
-            # Em caso de falha de conexão real, levanta erro explícito
-            raise ConnectionError(f"Falha ao conectar via SSH em {host}:{os.getenv('NETOPS_SSH_PORT', '22')}: {str(e)}")
+            # Em caso de falha de conexão real, levanta erro explícito com porta e perfil
+            raise ConnectionError(
+                f"Falha ao conectar via SSH em {host}:{profile.port} (perfil: '{profile.name}', usuário: '{profile.username}'): {str(e)}"
+            )
 
     def _map_netmiko_device_type(self, platform_type: str) -> str:
         pt = platform_type.lower()

@@ -15,6 +15,21 @@ Sua missão é realizar conexões SSH seguras, coletas de telemetria, diagnósti
 > 2. **Sem Disparos Paralelos ou Adicionais**: Nunca execute consultas, testes de harness ou coletas em outros IPs que não foram expressamente solicitados pelo usuário.
 > 3. **Conexão Direta**: Encaminhe a ação atômica ou discovery diretamente para o IP solicitado via MCP (`discover_device`, `run_canonical_action`, `run_adhoc_action`).
 > 4. **Zero Leitura Manual de .RAW**: É terminantemente PROIBIDO abrir ou ler arquivos `.raw` em `storage/raw/` (usando `view_file`, `cat`, `head`, etc.) para interpretar saídas no chat. Toda informação apresentada ao operador DEVE derivar exclusivamente dos dados estruturados em JSON normalizados pelo motor TTP.
+> 5. **Cofre de Credenciais & Perfis (Vault)**: Se o operador especificar um perfil (ex: *"usando perfil zabbix"*, *"com usuário admin"*), passe o parâmetro `credential_profile="<nome>"` nas ferramentas MCP. Se o operador perguntar quais perfis existem ou pedir opções de autenticação, invoque `list_credential_profiles()`. NUNCA exiba ou tente descobrir senhas em texto claro — elas devem permanecer estritamente mascaradas (`********`).
+
+---
+
+## 0.1 Comandos Rápidos de Chat (Harness Chat Commands)
+
+Sempre que a mensagem do operador no chat iniciar com barra (`/`), trate-a imediatamente como um comando operacional direto:
+
+* **`/profiles`** ou **`/profile`**: Invoque a ferramenta MCP `list_credential_profiles()` (ou consulte `registry/credentials.yaml` via `mcp_server.vault`) e renderize **imediatamente** uma tabela Markdown rica exibindo todos os perfis configurados (Perfil, Usuário, Porta, Status/Padrão, Descrição) com senhas rigorosamente mascaradas (`********`).
+* **`/actions`**: Apresente a lista de ações canônicas disponíveis cadastradas em `registry/actions.yaml`.
+* **`/vault`**: Exiba o status de segurança do cofre, quantidade de perfis e suporte a criptografia Fernet.
+* **`/help`**: Exiba a lista de comandos rápidos e exemplos de comandos em linguagem natural.
+
+> [!TIP]
+> Não hesite, não retorne mensagens em branco e não pergunte o que o operador deseja: execute e apresente a tabela formatada no chat imediatamente.
 
 ---
 
@@ -73,11 +88,13 @@ Antes de agir, você deve aderir às diretrizes contidas na pasta `rules/`:
 - [`rules/03-raw-data-handling.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/03-raw-data-handling.md): Arquivos `.raw` gravados em disco e isolados de prompts gigantes.
 - [`rules/04-dag-orchestration.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/04-dag-orchestration.md): Encadeamento de ações atômicas com filtros em código local.
 - [`rules/05-openconfig-norms.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/05-openconfig-norms.md): Padrões de mapeamento e neutralidade para schemas OpenConfig.
+- [`rules/06-chat-commands.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/06-chat-commands.md): Atendimento imediato a comandos de chat (/profiles, /actions, /vault, /help).
 
 ---
 
 ## 3. Catálogo de Habilidades (Skills)
 Consulte as skills especializadas para obter procedimentos operacionais detalhados:
+- [`skills/profiles/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/profiles/SKILL.md): Consulta e governança de perfis SSH do cofre (Vault) no chat.
 - [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md): Síntese autônoma de actions, schemas unificados e governança multi-versão.
 - [`skills/device-fingerprinting/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/device-fingerprinting/SKILL.md): Descoberta L1 (Banner) $\rightarrow$ L2 (Prompt) $\rightarrow$ L3 (Probe).
 - [`skills/ttp-self-healing/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/ttp-self-healing/SKILL.md): Síntese de templates TTP, sandbox e auto-cura.

@@ -1,0 +1,11 @@
+# Autonomous Network Management Harness — Dependências
+mcp>=2.2.0
+netmiko>=4.7.0
+paramiko>=4.0.0
+ttp>=0.10.1
+pydantic>=2.10.0
+pyyaml>=6.0.2
+rich>=13.9.0
+python-dotenv>=1.0.1
+openai>=1.60.0
+httpx>=0.28.0
