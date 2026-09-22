@@ -44,11 +44,14 @@ class CredentialProfile(BaseModel):
         }
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
 class VaultManager:
     """Gerenciador central de perfis de autenticação e segredos do Harness."""
 
-    def __init__(self, config_path: str = "registry/credentials.yaml"):
-        self.config_path = Path(config_path)
+    def __init__(self, config_path: Optional[str] = None):
+        self.config_path = Path(config_path or (PROJECT_ROOT / "registry" / "credentials.yaml"))
         self._profiles: Dict[str, CredentialProfile] = {}
         self._default_profile_name: str = "default"
         self.reload()

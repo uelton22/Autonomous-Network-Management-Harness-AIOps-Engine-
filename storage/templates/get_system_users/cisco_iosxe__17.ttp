@@ -1,0 +1,10 @@
+<group name="users" default="N/A">
+username {{ username }} privilege {{ privilege_level }} secret {{ secret_type | DIGIT }} {{ password_hash }}
+username {{ username }} privilege {{ privilege_level }} secret {{ password_hash }}
+username {{ username }} secret {{ secret_type | DIGIT }} {{ password_hash }}
+username {{ username }} secret {{ password_hash }}
+username {{ username }} privilege {{ privilege_level }} password {{ secret_type | DIGIT }} {{ password_hash }}
+username {{ username }} privilege {{ privilege_level }} password {{ password_hash }}
+username {{ username }} password {{ secret_type | DIGIT }} {{ password_hash }}
+username {{ username }} password {{ password_hash }}
+</group>

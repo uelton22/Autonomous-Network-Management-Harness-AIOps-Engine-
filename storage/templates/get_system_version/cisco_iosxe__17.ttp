@@ -1,0 +1,13 @@
+<group name="info">
+Cisco IOS XE Software, Version {{ os_version }}
+Cisco IOS Software [{{ os_family }}], {{ model | ORPHRASE }} Software ({{ image }}), Version {{ os_version }}, RELEASE SOFTWARE
+{{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
+cisco {{ hardware_model | ORPHRASE }} processor with {{ memory }} bytes of memory.
+Processor board ID {{ serial_number }}
+</group>
+<group name="info">
+Cisco IOS XE Software, Version {{ os_version }}
+</group>
+<group name="info">
+Cisco IOS Software, Version {{ os_version }}
+</group>

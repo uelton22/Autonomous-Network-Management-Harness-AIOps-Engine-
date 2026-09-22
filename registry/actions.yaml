@@ -25,6 +25,9 @@ atomic_actions:
       huawei_vrp:
         command: "display version"
         clean_pager: "screen-length 0 temporary"
+      cisco_iosxe_17:
+        command: "show version"
+        clean_pager: "terminal length 0"
       cisco_iosxe:
         command: "show version"
         clean_pager: "terminal length 0"
@@ -54,6 +57,9 @@ atomic_actions:
         command: "display device"
         clean_pager: "screen-length 0 temporary"
         fallback_command: "display elabel"
+      cisco_iosxe_17:
+        command: "show inventory"
+        clean_pager: "terminal length 0"
       cisco_iosxe:
         command: "show inventory"
         clean_pager: "terminal length 0"
@@ -77,56 +83,35 @@ atomic_actions:
       huawei_vrp:
         command: "display version"
         clean_pager: "screen-length 0 temporary"
+      cisco_iosxe_17:
+        command: "show version"
+        clean_pager: "terminal length 0"
       cisco_iosxe:
         command: "show version"
         clean_pager: "terminal length 0"
 
   get_system_users:
-    description: "Coleta contas de usuários locais e privilégios configurados no sistema (openconfig-system/aaa)"
+    description: "Coleta contas de usuários locais, grupos, níveis de privilégio e status"
     schema: "registry/schemas/system_users.json"
     privilege: "read"
     platforms:
       datacom_dmos_12:
-        command: "show running-config aaa"
-        clean_pager: "terminal length 0"
-      datacom_dmos:
-        command: "show running-config aaa"
-        clean_pager: "terminal length 0"
-      huawei_vrp_v200:
-        command: "display local-user"
-        clean_pager: "screen-length 0 temporary"
-      huawei_vrp_v800:
-        command: "display local-user"
-        clean_pager: "screen-length 0 temporary"
-      huawei_vrp:
-        command: "display local-user"
-        clean_pager: "screen-length 0 temporary"
-      cisco_iosxe:
         command: "show running-config | include username"
         clean_pager: "terminal length 0"
-
-  get_active_sessions:
-    description: "Coleta sessões de usuários ativas conectadas ao equipamento via SSH/CLI/SNMP/Console"
-    schema: "registry/schemas/user_sessions.json"
-    privilege: "read"
-    platforms:
-      datacom_dmos_12:
-        command: "who"
-        clean_pager: "terminal length 0"
       datacom_dmos:
-        command: "who"
+        command: "show running-config | include username"
         clean_pager: "terminal length 0"
       huawei_vrp_v200:
-        command: "display users"
-        clean_pager: "screen-length 0 temporary"
-      huawei_vrp_v800:
-        command: "display users"
+        command: "display current-configuration | include local-user"
         clean_pager: "screen-length 0 temporary"
       huawei_vrp:
-        command: "display users"
+        command: "display current-configuration | include local-user"
         clean_pager: "screen-length 0 temporary"
+      cisco_iosxe_17:
+        command: "show running-config | include username"
+        clean_pager: "terminal length 0"
       cisco_iosxe:
-        command: "show users"
+        command: "show running-config | include username"
         clean_pager: "terminal length 0"
 
 

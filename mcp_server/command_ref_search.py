@@ -16,16 +16,31 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
 class CommandReferenceSearcher:
     """Buscador e indexador em memória para manuais de comandos dos fabricantes com suporte multi-versão."""
 
-    def __init__(self, base_dir: str = "command_reference"):
-        self.base_dir = Path(base_dir)
+    def __init__(self, base_dir: Optional[str] = None):
+        self.base_dir = Path(base_dir or (PROJECT_ROOT / "command_reference"))
         self._index_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+    @staticmethod
+    def _normalize_vendor(vendor: str) -> str:
+        """Normaliza variações e aliases de nomes de fabricantes (ex: cisco_iosxe, ios -> cisco)."""
+        v = vendor.lower().strip()
+        if any(x in v for x in ["cisco", "ios"]):
+            return "cisco"
+        if any(x in v for x in ["datacom", "dmos"]):
+            return "datacom"
+        if any(x in v for x in ["huawei", "vrp"]):
+            return "huawei"
+        return v
 
     def list_available_versions(self, vendor: str) -> List[str]:
         """Lista todas as subpastas de versão disponíveis para o fabricante especificado."""
-        v = vendor.lower()
+        v = self._normalize_vendor(vendor)
         vendor_dir = self.base_dir / v
         if not vendor_dir.exists():
             return []
@@ -42,7 +57,7 @@ class CommandReferenceSearcher:
         Se version for especificado, busca correspondência exata ou por prefixo.
         Se não especificado, retorna todas as versões disponíveis ou a pasta raiz.
         """
-        v = vendor.lower()
+        v = self._normalize_vendor(vendor)
         vendor_dir = self.base_dir / v
         if not vendor_dir.exists():
             return []
@@ -75,14 +90,48 @@ class CommandReferenceSearcher:
             # Se nenhuma versão foi solicitada ou não houve match estrito, retorna todas as versões disponíveis
             return [(v_name, vendor_dir / v_name) for v_name in available_versions]
 
-        # Caso 2: Não existem subpastas de versão (ex: Datacom direto na raiz da pasta datacom/)
+        # Caso 2: Não existem subpastas de versão (ex: Cisco ou Datacom direto na raiz da pasta)
         return [("default", vendor_dir)]
 
     def _load_dir_index(self, version_tag: str, directory: Path) -> List[Dict[str, Any]]:
-        """Carrega e anota os índices JSON ou markdown de um diretório específico."""
+        """Carrega e anota os índices JSON, JSONL ou markdown de um diretório específico com dados ricos."""
         records: List[Dict[str, Any]] = []
 
-        # 1. Procurar por arquivos de índice (*index.json)
+        # 1. Preferência: Arquivos .jsonl completos (contêm descrição, sintaxe, parâmetros e exemplos)
+        jsonl_files = list(directory.glob("*.jsonl"))
+        if jsonl_files:
+            for j_file in jsonl_files:
+                try:
+                    with open(j_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if not line.strip():
+                                continue
+                            item = json.loads(line)
+                            cmd_name = item.get("command", "")
+                            is_read = item.get("is_read_command", False) or cmd_name.startswith("show") or cmd_name.startswith("display")
+                            
+                            # Sintaxe limpa para busca
+                            entry = {
+                                "command": cmd_name,
+                                "description": item.get("description", "")[:200],  # resumo de busca
+                                "syntax": item.get("syntax", ""),
+                                "command_mode": item.get("command_mode", ""),
+                                "category": item.get("category", ""),
+                                "chapter": item.get("chapter", ""),
+                                "section": item.get("section", ""),
+                                "page": item.get("page", 0),
+                                "is_read_command": is_read,
+                                "file": item.get("file", f"chapters/{item.get('chapter_num', 0):02d}.md"),
+                                "doc_version": version_tag,
+                                "file_relative": str((directory / item.get("file", "")).relative_to(self.base_dir)) if "file" in item else ""
+                            }
+                            records.append(entry)
+                    if records:
+                        return records
+                except Exception:
+                    pass
+
+        # 2. Fallback: Arquivos de índice compacto (*index.json)
         index_files = list(directory.glob("*index.json"))
         if index_files:
             for idx_file in index_files:
@@ -92,15 +141,15 @@ class CommandReferenceSearcher:
                         for item in data:
                             entry = dict(item)
                             entry["doc_version"] = version_tag
-                            # Garante que o caminho relativo do arquivo aponte a partir da base
                             if "file" in entry:
                                 entry["file_relative"] = str((directory / entry["file"]).relative_to(self.base_dir))
                             records.append(entry)
                 except Exception:
                     pass
-            return records
+            if records:
+                return records
 
-        # 2. Fallback: Se não houver index.json, indexa headers dos arquivos .md em chapters/
+        # 3. Fallback adicional: Arquivos .md em chapters/
         chapters_dir = directory / "chapters"
         if chapters_dir.exists():
             for md_file in chapters_dir.glob("*.md"):
@@ -112,7 +161,12 @@ class CommandReferenceSearcher:
                             is_read = cmd_name.startswith("show") or cmd_name.startswith("display")
                             records.append({
                                 "command": cmd_name,
+                                "description": "",
+                                "syntax": cmd_name,
+                                "command_mode": "",
+                                "category": "",
                                 "chapter": md_file.stem,
+                                "section": "",
                                 "file": str(md_file.relative_to(directory)),
                                 "file_relative": str(md_file.relative_to(self.base_dir)),
                                 "is_read_command": is_read,
@@ -125,13 +179,14 @@ class CommandReferenceSearcher:
 
     def _load_vendor_index(self, vendor: str, version: Optional[str] = None) -> List[Dict[str, Any]]:
         """Carrega o índice JSON compacto do fabricante respeitando a versão solicitada."""
-        target_dirs = self._get_target_dirs(vendor, version)
+        norm_vendor = self._normalize_vendor(vendor)
+        target_dirs = self._get_target_dirs(norm_vendor, version)
         if not target_dirs:
             return []
 
         records: List[Dict[str, Any]] = []
         for v_tag, v_dir in target_dirs:
-            cache_key = f"{vendor.lower()}_{v_tag.lower()}"
+            cache_key = f"{norm_vendor}_{v_tag.lower()}"
             if cache_key in self._index_cache:
                 records.extend(self._index_cache[cache_key])
             else:
@@ -151,38 +206,79 @@ class CommandReferenceSearcher:
         max_results: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Pesquisa comandos por palavra-chave ou termos.
-        Suporta filtragem por:
-        - Privilégio (read_only: show / display)
-        - Categoria
-        - Versão do SO (ex: 'v200', 'V200R011C10', 'v600')
+        Pesquisa comandos por palavra-chave ou termos com pontuação de relevância.
+        Suporta:
+        - Busca em nome do comando, descrição semântica e sintaxe.
+        - Fallback inteligente se read_only=True não encontrar resultados.
+        - Versão do SO (ex: 'v200', 'V200R011C10', 'v600').
         """
-        index_records = self._load_vendor_index(vendor, version)
+        norm_vendor = self._normalize_vendor(vendor)
+        index_records = self._load_vendor_index(norm_vendor, version)
         if not index_records:
             return []
 
-        q_terms = [t.lower().strip() for t in query.split() if t.strip()]
-        matches: List[Dict[str, Any]] = []
+        clean_query = query.lower().strip()
+        q_terms = [t for t in clean_query.split() if t]
 
-        for rec in index_records:
-            # Filtro de privilégio (somente comandos de leitura se read_only=True)
-            if read_only and not rec.get("is_read_command", False):
-                cmd_name = rec.get("command", "").lower()
-                if not (cmd_name.startswith("show") or cmd_name.startswith("display")):
-                    continue
+        def _score_and_filter(rec: Dict[str, Any], enforce_read_only: bool) -> int:
+            cmd_name = rec.get("command", "").lower()
+            is_read = rec.get("is_read_command", False) or cmd_name.startswith("show") or cmd_name.startswith("display")
 
-            # Filtro de categoria
+            if enforce_read_only and not is_read:
+                return -1
+
             if category and rec.get("category", "").lower() != category.lower():
-                continue
+                return -1
 
-            cmd_text = f"{rec.get('command', '')} {rec.get('section', '')} {rec.get('chapter', '')} {rec.get('category', '')}".lower()
+            desc = rec.get("description", "").lower()
+            syntax = rec.get("syntax", "").lower()
+            chapter = rec.get("chapter", "").lower()
+            sec = rec.get("section", "").lower()
+            full_text = f"{cmd_name} {syntax} {desc} {chapter} {sec}"
 
-            if all(term in cmd_text for term in q_terms):
-                matches.append(rec)
-                if len(matches) >= max_results:
-                    break
+            # Deve conter todos os termos pesquisados em algum lugar do registro
+            if not all(term in full_text for term in q_terms):
+                return -1
 
-        return matches
+            score = 0
+            # Pontuação por correspondência exata no comando
+            if cmd_name == clean_query:
+                score += 200
+            elif cmd_name.startswith(clean_query):
+                score += 100
+            elif clean_query in cmd_name:
+                score += 60
+
+            # Termos individuais no comando
+            for term in q_terms:
+                if term in cmd_name:
+                    score += 25
+                if term in syntax:
+                    score += 15
+                if term in desc:
+                    score += 10
+
+            return score
+
+        # 1ª Tentativa: respeitando read_only
+        scored_matches = []
+        for rec in index_records:
+            s = _score_and_filter(rec, enforce_read_only=read_only)
+            if s > 0:
+                scored_matches.append((s, rec))
+
+        # 2ª Tentativa: se read_only=True retornou 0, faz fallback relaxando read_only para não deixar o operador no vácuo
+        if not scored_matches and read_only:
+            for rec in index_records:
+                s = _score_and_filter(rec, enforce_read_only=False)
+                if s > 0:
+                    r_copy = dict(rec)
+                    r_copy["read_only_fallback"] = True
+                    scored_matches.append((s, r_copy))
+
+        # Ordena pelo score decrescente
+        scored_matches.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in scored_matches[:max_results]]
 
     def get_command_details(
         self,

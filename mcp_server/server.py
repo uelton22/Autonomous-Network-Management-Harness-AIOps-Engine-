@@ -5,10 +5,21 @@ Expõe ferramentas seguras via stdio com controle estrito de privilégios (read,
 """
 
 import sys
+import os
 import json
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
+
+# Garante ancoragem absoluta na raiz do projeto (evita erro quando CWD="/" na inicialização da IDE)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:
+    os.chdir(PROJECT_ROOT)
+except Exception:
+    pass
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import yaml
 from mcp.server import MCPServer
@@ -19,15 +30,19 @@ from mcp_server.fingerprinter import progressive_fingerprint
 from mcp_server.ttp_engine import TTPHybridEngine
 from mcp_server.command_ref_search import CommandReferenceSearcher
 from mcp_server.vault import vault
+from mcp_server.audit_logger import audit_logger
 
 
-# Inicialização dos componentes
+# Inicialização dos componentes com caminhos absolutos ancorados no PROJECT_ROOT
 server = MCPServer("netops-ssh-mcp")
-ssh_runner = SSHRunner(raw_storage_dir="storage/raw")
-ttp_engine = TTPHybridEngine(template_dir="storage/templates")
-cmd_searcher = CommandReferenceSearcher(base_dir="command_reference")
+ssh_runner = SSHRunner(raw_storage_dir=str(PROJECT_ROOT / "storage" / "raw"))
+ttp_engine = TTPHybridEngine(
+    template_dir=str(PROJECT_ROOT / "storage" / "templates"),
+    normalized_storage_dir=str(PROJECT_ROOT / "storage" / "normalized")
+)
+cmd_searcher = CommandReferenceSearcher(base_dir=str(PROJECT_ROOT / "command_reference"))
 
-ACTIONS_FILE = Path("registry/actions.yaml")
+ACTIONS_FILE = PROJECT_ROOT / "registry" / "actions.yaml"
 
 
 def _load_actions() -> Dict[str, Any]:
@@ -55,6 +70,56 @@ def list_credential_profiles() -> str:
             "default_profile": vault.default_profile_name,
             "total_profiles": len(profiles),
             "profiles": profiles
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "error": str(e)
+        }, indent=2, ensure_ascii=False)
+
+
+@server.tool()
+def list_audit_log(host: str = "", limit: int = 10) -> str:
+    """
+    Consulta o histórico de auditoria transacional de alterações e comandos de configuração (storage/audit_log/).
+    Retorna data/hora, host, perfil usado, nível de privilégio, status (applied/failed), quantidade de comandos e erros da CLI.
+    
+    Parâmetros:
+      host: Filtrar por IP ou hostname específico (opcional)
+      limit: Quantidade máxima de registros a retornar (padrão: 10)
+    """
+    try:
+        logs = audit_logger.list_logs(host=host or None, limit=limit)
+        return json.dumps({
+            "status": "success",
+            "total_records": len(logs),
+            "host_filter": host or "all",
+            "audit_logs": logs
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "error": str(e)
+        }, indent=2, ensure_ascii=False)
+
+
+@server.tool()
+def get_audit_log_detail(audit_id: str) -> str:
+    """
+    Recupera os detalhes completos de uma transação de configuração pelo ID de auditoria (audit_id).
+    Retorna os comandos exatos enviados, a saída bruta do equipamento e a análise detalhada de erros.
+    """
+    try:
+        log_entry = audit_logger.get_log(audit_id)
+        if not log_entry:
+            return json.dumps({
+                "status": "not_found",
+                "audit_id": audit_id,
+                "message": f"Nenhum registro de auditoria encontrado com ID '{audit_id}'."
+            }, indent=2, ensure_ascii=False)
+        return json.dumps({
+            "status": "success",
+            "audit_entry": log_entry
         }, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({
@@ -214,8 +279,13 @@ def run_adhoc_action(
         # 3. Lê o .raw gerado em disco
         raw_content = Path(exec_res["raw_path"]).read_text(encoding="utf-8")
 
-        # 4. Executa Pipeline Híbrido TTP e persiste JSON
-        parse_result = ttp_engine.parse_with_pipeline(
+        # 4. Executa Pipeline Híbrido TTP e persiste JSON com hot-reload automático
+        import importlib
+        import mcp_server.ttp_engine
+        importlib.reload(mcp_server.ttp_engine)
+        active_engine = mcp_server.ttp_engine.TTPHybridEngine(template_dir="storage/templates")
+
+        parse_result = active_engine.parse_with_pipeline(
             action=action_name,
             vendor=fp.vendor,
             os_family=fp.os_family,
@@ -372,8 +442,13 @@ def run_canonical_action(
         # 4. Lê o .raw gerado em disco
         raw_content = Path(exec_res["raw_path"]).read_text(encoding="utf-8")
 
-        # 5. Executa Pipeline Híbrido TTP e persiste JSON
-        parse_result = ttp_engine.parse_with_pipeline(
+        # 5. Executa Pipeline Híbrido TTP e persiste JSON com hot-reload automático
+        import importlib
+        import mcp_server.ttp_engine
+        importlib.reload(mcp_server.ttp_engine)
+        active_engine = mcp_server.ttp_engine.TTPHybridEngine(template_dir="storage/templates")
+
+        parse_result = active_engine.parse_with_pipeline(
             action=action,
             vendor=fp.vendor,
             os_family=fp.os_family,

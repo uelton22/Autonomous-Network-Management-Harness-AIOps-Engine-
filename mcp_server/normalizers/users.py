@@ -1,101 +1,75 @@
 """
 mcp_server/normalizers/users.py
-Normalizadores Canônicos OpenConfig para contas de usuários do sistema e sessões ativas.
+Normalizador canônico OpenConfig para contas de usuários locais e privilégios.
 """
 
-import time
 from typing import List, Dict, Any
+from datetime import datetime, timezone
 
 
-def normalize_system_users(records: List[Dict[str, Any]], device_hostname: str) -> Dict[str, Any]:
-    """Normaliza saída bruta de usuários para o modelo OpenConfigSystemUsers."""
-    users = []
+def normalize_system_users(
+    records: List[Dict[str, Any]],
+    vendor: str,
+    os_family: str,
+    version: str,
+    device_hostname: str
+) -> Dict[str, Any]:
+    """Normaliza registros brutos de usuários de qualquer fabricante para o schema OpenConfig."""
+    users_list = []
     seen = set()
+
     for r in records:
-        uname = r.get("username", "").strip()
-        if not uname or uname in seen or uname.lower() in ("session", "user", "username", "n/a", "total"):
+        if not isinstance(r, dict):
+            continue
+        uname = r.get("username")
+        if not uname or uname in seen:
             continue
         seen.add(uname)
-        group = r.get("group", "N/A")
-        if (group == "N/A" or not group) and "admin_level" in r:
-            lvl = str(r["admin_level"]).strip()
-            group = f"level-{lvl}" if lvl else "default"
-        elif (group == "N/A" or not group) and "privilege_level" in r:
-            lvl = str(r["privilege_level"]).strip()
-            group = f"level-{lvl}" if lvl else "default"
-        elif group == "N/A" or not group:
-            group = "default"
 
-        role = r.get("role")
+        # Trata nível numérico de privilégio
+        priv_raw = r.get("privilege") or r.get("privilege_level") or r.get("level")
+        priv_int = None
+        if priv_raw is not None:
+            try:
+                priv_int = int(priv_raw)
+            except (ValueError, TypeError):
+                priv_int = 15 if "admin" in str(priv_raw).lower() else 1
+
+        # Determina role
+        role = r.get("role") or r.get("group")
         if not role:
-            if "admin_level" in r and str(r["admin_level"]).strip() == "15":
+            if priv_int is not None and priv_int >= 15:
                 role = "admin"
-            elif group != "default":
-                role = group
             else:
-                role = "default"
+                role = "operator"
 
-        pwd_configured = True if (r.get("password_hash") or r.get("state") in ("A", "active", "B", "block")) else r.get("password_configured", True)
+        # Trata autenticação / hash / senha
+        auth_type = r.get("algorithm") or r.get("auth_type") or r.get("secret_type")
+        if not auth_type:
+            if r.get("secret"):
+                auth_type = "secret"
+            elif r.get("password"):
+                auth_type = "password"
+            else:
+                auth_type = "local"
 
-        users.append({
+        users_list.append({
             "username": uname,
-            "group": group,
             "role": role,
-            "authentication_type": "local",
-            "password_configured": pwd_configured
+            "privilege_level": priv_int if priv_int is not None else 15,
+            "group": r.get("group", role),
+            "authentication_type": auth_type,
+            "password_configured": True,
         })
+
+    admin_count = sum(1 for u in users_list if u.get("role") == "admin" or (u.get("privilege_level") or 0) >= 15)
 
     return {
         "device": device_hostname,
-        "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "collected_at": datetime.now(timezone.utc).isoformat(),
         "summary": {
-            "total_users": len(users)
+            "total_users": len(users_list),
+            "admin_users": admin_count,
         },
-        "users": users
-    }
-
-
-def normalize_user_sessions(records: List[Dict[str, Any]], device_hostname: str) -> Dict[str, Any]:
-    """Normaliza saída bruta de sessões de usuários para o modelo OpenConfigUserSessions."""
-    sessions = []
-    seen_ids = set()
-    for r in records:
-        sid = str(r.get("session_id", "")).strip()
-        uname = r.get("username", "").strip()
-        if not sid or not uname or uname.lower() in ("session", "user", "username"):
-            continue
-        if sid in seen_ids:
-            continue
-        seen_ids.add(sid)
-        is_cur = r.get("is_current", False)
-        if isinstance(is_cur, str):
-            is_cur = "*" in is_cur or "+" in is_cur or "true" in is_cur.lower()
-
-        ctx = r.get("context", "cli")
-        if r.get("context_num"):
-            ctx = f"{ctx} {r.get('context_num')}".strip()
-
-        proto = r.get("protocol") or "ssh"
-        proto = proto.lower()
-
-        login_time = r.get("login_time") or r.get("delay")
-
-        sessions.append({
-            "session_id": sid,
-            "username": uname,
-            "context": ctx,
-            "source_ip": r.get("source_ip", "local"),
-            "protocol": proto,
-            "login_time": login_time,
-            "mode": r.get("mode", "operational"),
-            "is_current": is_cur
-        })
-
-    return {
-        "device": device_hostname,
-        "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "summary": {
-            "total_sessions": len(sessions)
-        },
-        "sessions": sessions
+        "users": users_list,
     }

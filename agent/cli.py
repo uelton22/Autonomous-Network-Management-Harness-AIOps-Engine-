@@ -137,8 +137,44 @@ def show_profiles_table(vault, active_name: str):
             status_tag,
             prof.get("description", "")
         )
+
     console.print(table)
-    console.print("[dim]Para trocar de perfil use: [bold]/profile <nome>[/bold][/dim]\n")
+    console.print(f"[dim]Total de {len(profiles)} perfis cadastrados no Vault.[/dim]\n")
+
+
+def show_commands_table(vendor: str, query: str):
+    """Exibe comandos encontrados no manual do fabricante em formato de tabela Rich."""
+    from mcp_server.server import search_command_reference
+    import json
+
+    raw_res = search_command_reference(vendor=vendor, query=query, read_only=False)
+    data = json.loads(raw_res)
+
+    results = data.get("results", [])
+    if not results:
+        console.print(f"[yellow]Nenhum comando encontrado para '{query}' no manual de {vendor.upper()}.[/yellow]\n")
+        return
+
+    table = Table(title=f"[bold cyan]Comandos Encontrados no Manual — {vendor.upper()} ({len(results)})[/bold cyan]", border_style="cyan")
+    table.add_column("Comando", style="bold green")
+    table.add_column("Modo de Execução", style="yellow")
+    table.add_column("Capítulo / Seção", style="dim")
+    table.add_column("Descrição", style="white")
+
+    for r in results:
+        mode = r.get("command_mode") or ("Leitura (show/display)" if r.get("is_read_command") else "Configuração")
+        desc = r.get("description", "")
+        if len(desc) > 80:
+            desc = desc[:77] + "..."
+        table.add_row(
+            r.get("command", ""),
+            mode,
+            r.get("chapter", ""),
+            desc
+        )
+
+    console.print(table)
+    console.print(f"[dim]Para ver detalhes use a consulta natural: 'Como funciona o comando <nome> no {vendor}?'[/dim]\n")
 
 
 def interactive_loop():
@@ -173,6 +209,9 @@ def interactive_loop():
 ### Comandos Disponíveis no Terminal:
 * `/profiles`: Lista todos os perfis de credenciais SSH cadastrados no Vault.
 * `/profile <nome>`: Altera o perfil SSH ativo para a sessão (ex: `/profile zabbix`, `/profile admin`).
+* `/cisco <termo>`: Pesquisa comandos no manual Cisco IOS-XE (ex: `/cisco logging`, `/cisco interface`).
+* `/datacom <termo>`: Pesquisa comandos no manual Datacom DmOS.
+* `/huawei <termo>`: Pesquisa comandos no manual Huawei VRP.
 * `/model <nome>`: Altera o modelo da LLM dinamicamente (ex: `/model llama3.1:8b`).
 * `/clear`: Limpa o histórico de diálogo preservando as regras de rede.
 * `/status`: Revalida a conectividade com o Ollama/vLLM e exibe o cabeçalho.
@@ -182,7 +221,7 @@ def interactive_loop():
 * `Identifique o equipamento no IP 100.75.9.252 usando o perfil zabbix.`
 * `Liste os usuários locais e sessões ativas do switch 100.75.4.243.`
 * `Quais perfis de conexão SSH estão disponíveis no cofre?`
-* `Pesquise no manual da Huawei como configurar agregação eth-trunk.`
+* `Pesquise no manual da Cisco como configurar archive / rollback.`
 """
                 console.print(Markdown(help_text))
                 continue
@@ -190,6 +229,33 @@ def interactive_loop():
             elif user_input.lower() == "/profiles":
                 cur_prof = agent.active_profile or vault.default_profile
                 show_profiles_table(vault, cur_prof)
+                continue
+
+            elif user_input.lower().startswith("/cisco"):
+                parts = user_input.split(maxsplit=1)
+                query = parts[1].strip() if len(parts) > 1 else ""
+                if not query:
+                    console.print("[yellow]Uso: /cisco <termo de busca> (ex: /cisco logging, /cisco vlan)[/yellow]\n")
+                else:
+                    show_commands_table("cisco", query)
+                continue
+
+            elif user_input.lower().startswith("/datacom"):
+                parts = user_input.split(maxsplit=1)
+                query = parts[1].strip() if len(parts) > 1 else ""
+                if not query:
+                    console.print("[yellow]Uso: /datacom <termo de busca> (ex: /datacom interface)[/yellow]\n")
+                else:
+                    show_commands_table("datacom", query)
+                continue
+
+            elif user_input.lower().startswith("/huawei"):
+                parts = user_input.split(maxsplit=1)
+                query = parts[1].strip() if len(parts) > 1 else ""
+                if not query:
+                    console.print("[yellow]Uso: /huawei <termo de busca> (ex: /huawei eth-trunk)[/yellow]\n")
+                else:
+                    show_commands_table("huawei", query)
                 continue
 
             elif user_input.lower().startswith("/profile"):

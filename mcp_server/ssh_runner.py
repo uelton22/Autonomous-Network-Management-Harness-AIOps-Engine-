@@ -7,6 +7,7 @@ Garante que saídas brutas fiquem em disco e nunca saturem o contexto da LLM.
 import os
 import re
 import time
+import hashlib
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
@@ -15,13 +16,22 @@ load_dotenv()
 
 from mcp_server.security import enforce_privilege, PrivilegeLevel
 from mcp_server.vault import vault, CredentialProfile
+from mcp_server.cli_error_detector import inspect_cli_output
+from mcp_server.audit_logger import audit_logger
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class SSHRunner:
     """Gerenciador de sessões e execuções SSH para equipamentos de rede."""
 
-    def __init__(self, raw_storage_dir: str = "storage/raw"):
-        self.raw_storage_dir = Path(raw_storage_dir)
+    def __init__(self, raw_storage_dir: Optional[str] = None):
+        if raw_storage_dir:
+            self.raw_storage_dir = Path(raw_storage_dir)
+        else:
+            base = os.getenv("NETOPS_STORAGE_DIR", str(PROJECT_ROOT / "storage"))
+            self.raw_storage_dir = Path(base) / "raw"
         self.raw_storage_dir.mkdir(parents=True, exist_ok=True)
 
     def _sanitize_filename_component(self, text: str) -> str:
@@ -52,11 +62,12 @@ class SSHRunner:
         active_privilege = enforce_privilege(command, privilege_level, platform_type)
 
         safe_host = self._sanitize_filename_component(host)
-        safe_cmd = self._sanitize_filename_component(command[:30])
+        cmd_hash = hashlib.md5(command.strip().encode("utf-8")).hexdigest()[:8]
+        safe_cmd = f"{self._sanitize_filename_component(command[:30])}_{cmd_hash}"
         safe_prof = self._sanitize_filename_component(profile.name)
 
-        # 3. Verificação de Cache de Curta Duração (Deduplicação de coletas)
-        if not force_refresh:
+        # 3. Verificação de Cache de Curta Duração (Deduplicação de coletas apenas para READ)
+        if not force_refresh and active_privilege == PrivilegeLevel.READ:
             pattern = f"{safe_host}_*_{safe_cmd}.raw"
             existing_raws = sorted(
                 self.raw_storage_dir.glob(pattern),
@@ -88,7 +99,13 @@ class SSHRunner:
                     }
 
         # 4. Execução SSH Real no Equipamento com o Perfil Resolvido
-        raw_stdout = self._execute_real_ssh(host, command, platform_type, profile=profile)
+        raw_stdout = self._execute_real_ssh(
+            host,
+            command,
+            platform_type,
+            profile=profile,
+            privilege_level=active_privilege.value
+        )
 
         # 5. Persistência Obrigatória de .raw em Disco
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -99,6 +116,44 @@ class SSHRunner:
 
         lines = raw_stdout.splitlines()
 
+        # 6. Para comandos de configuração (EDITOR ou FULL), executa inspeção de erros e auditoria
+        if active_privilege in (PrivilegeLevel.EDITOR, PrivilegeLevel.FULL):
+            inspection = inspect_cli_output(raw_stdout, platform_type)
+            config_lines = [l.strip() for l in command.splitlines() if l.strip()]
+            audit_record = audit_logger.log_change(
+                host=host,
+                profile_used=profile.name,
+                privilege_level=active_privilege.value,
+                platform_type=platform_type,
+                commands=config_lines,
+                raw_output=raw_stdout,
+                inspection_result=inspection
+            )
+
+            status = audit_record["status"]
+            return {
+                "status": status,
+                "host": host,
+                "command": command,
+                "platform_type": platform_type,
+                "privilege_level": active_privilege.value,
+                "profile_used": profile.name,
+                "username_used": profile.username,
+                "port_used": profile.port,
+                "audit_id": audit_record["audit_id"],
+                "is_success": inspection["is_success"],
+                "has_errors": inspection["has_errors"],
+                "errors_detected": inspection["errors"],
+                "warnings_detected": inspection["warnings"],
+                "summary": inspection["clean_summary"],
+                "raw_path": str(raw_filepath.resolve()),
+                "raw_filename": raw_filename,
+                "line_count": len(lines),
+                "bytes_count": len(raw_stdout.encode("utf-8")),
+                "output_snippet": raw_stdout[:500] if inspection["has_errors"] else "[CONFIG ENVIADA COM SUCESSO - REGISTRADA EM AUDITORIA]"
+            }
+
+        # Para comandos de leitura (READ), mantém isolamento padrão de RAW
         return {
             "status": "success",
             "host": host,
@@ -122,7 +177,8 @@ class SSHRunner:
         host: str,
         command: str,
         platform_type: str,
-        profile: Optional[CredentialProfile] = None
+        profile: Optional[CredentialProfile] = None,
+        privilege_level: str = "read"
     ) -> str:
         """Executa comando em switch/roteador físico via Netmiko/Paramiko com perfil de credenciais."""
         if profile is None:
@@ -152,8 +208,15 @@ class SSHRunner:
                     net_connect.send_command("screen-length 0 temporary")
                 else:
                     net_connect.send_command("terminal length 0")
-                output = net_connect.send_command(command)
+
+                is_exec = any(command.strip().lower().startswith(p) for p in ("show ", "display ", "ping ", "traceroute ", "tracert ", "dir", "who", "write"))
+                if privilege_level in ("editor", "full") and not is_exec:
+                    config_lines = [line.strip() for line in command.splitlines() if line.strip()]
+                    output = net_connect.send_config_set(config_lines)
+                else:
+                    output = net_connect.send_command(command)
                 return output
+
         except Exception as e:
             # Em caso de falha de conexão real, levanta erro explícito com porta e perfil
             raise ConnectionError(

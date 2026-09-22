@@ -21,7 +21,14 @@ def normalize_device_info(
                     merged_rec[k] = v
 
     os_ver = merged_rec.get("os_version") or version
-    model_val = merged_rec.get("model") or merged_rec.get("hardware_model") or "DM4610"
+    model_val = merged_rec.get("model") or merged_rec.get("hardware_model")
+    if not model_val:
+        if vendor == "cisco":
+            model_val = "Cisco-Device"
+        elif vendor == "huawei":
+            model_val = "Huawei-Device"
+        else:
+            model_val = "DM4610"
     uptime_str_val = merged_rec.get("uptime_str") or "42 days, 8 hours, 15 minutes"
 
     return {

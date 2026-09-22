@@ -9,6 +9,9 @@ Esta regra orienta o Agente a interpretar e responder instantaneamente a comando
 | Comando | Intenção / Ação | Ferramenta / Fonte | Comportamento Esperado no Chat |
 | :--- | :--- | :--- | :--- |
 | **`/profiles`** ou **`/profile`** | Listar perfis do cofre | `list_credential_profiles()` ou `registry/credentials.yaml` | Renderiza tabela com Nome, Usuário, Porta, Status e Descrição com senhas mascaradas (`********`). |
+| **`/cisco <termo>`** | Pesquisar manual oficial Cisco | `search_command_reference("cisco", termo)` | Busca comandos IOS na pasta `command_reference/cisco/` e exibe sintaxes e modos. |
+| **`/datacom <termo>`** | Pesquisar manual oficial Datacom | `search_command_reference("datacom", termo)` | Busca comandos DmOS em `command_reference/datacom/` e exibe sintaxes e modos. |
+| **`/huawei <termo>`** | Pesquisar manual oficial Huawei | `search_command_reference("huawei", termo)` | Busca comandos VRP em `command_reference/huawei/` com resolução de versão. |
 | **`/actions`** | Catálogo de ações canônicas | `registry/actions.yaml` | Renderiza tabela com todas as ações suportadas, privilégios e plataformas. |
 | **`/vault`** | Status de segurança do cofre | `mcp_server.vault` | Exibe quantidade de perfis, tipo de criptografia ativa (Fernet) e variáveis de ambiente. |
 | **`/help`** | Ajuda e guia operacional | Diretrizes do Harness | Exibe comandos rápidos e exemplos de perguntas em linguagem natural. |

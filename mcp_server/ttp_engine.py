@@ -69,9 +69,60 @@ def extract_representative_sample(raw_text: str, max_lines: int = 50) -> str:
     )
 
 
+def is_empty_or_no_records_output(raw_text: str, action: str) -> bool:
+    """
+    Verifica se a saída da CLI do equipamento é legitimamente vazia ou indica ausência de registros
+    (ex: processo desabilitado, nenhuma entrada encontrada, apenas cabeçalhos de tabela).
+    """
+    if not raw_text or not raw_text.strip():
+        return True
+
+    clean_lines = [
+        l.strip() for l in raw_text.splitlines()
+        if l.strip() and not l.strip().endswith("#") and not l.strip().endswith(">") and not l.strip().endswith("]")
+    ]
+    if not clean_lines:
+        return True
+
+    text_lower = raw_text.lower()
+    no_records_phrases = (
+        "not enabled",
+        "not running",
+        "not configured",
+        "is not active",
+        "no matching",
+        "no entries",
+        "not found",
+        "total: 0",
+        "0 entries",
+        "total records: 0",
+        "no neighbors",
+        "no process",
+        "no active session",
+        "no route",
+        "invalid input",
+    )
+    if any(phrase in text_lower for phrase in no_records_phrases):
+        return True
+
+    # Para tabelas de vizinhos (OSPF, BGP, LLDP), se todas as linhas forem apenas cabeçalhos ou separadores
+    if action in ("get_ospf_neighbors", "get_lldp_neighbors", "get_bgp_summary"):
+        header_words = ("neighbor", "pri", "state", "dead", "address", "interface", "area", "peer", "router", "id", "up/down")
+        if all(any(w in l.lower() for w in header_words) or set(l).issubset({"-", " ", "=", "*", "+"}) for l in clean_lines):
+            return True
+
+    if action in ("get_ospf_status", "get_ospf_interfaces"):
+        header_words = ("ospf", "routing-process", "router-id", "area", "interface", "state", "address")
+        if all(any(w in l.lower() for w in header_words) or set(l).issubset({"-", " ", "=", "*", "+"}) for l in clean_lines):
+            return True
+
+    return False
+
+
 # -------------------------------------------------------------------------
 # BUILT-IN CANONICAL TTP TEMPLATES (Templates de Referência por Fabricante)
 # -------------------------------------------------------------------------
+
 
 def get_builtin_ttp_template(action: str, vendor_os: str) -> str:
     """Retorna templates TTP de referência calibrados para cada fabricante/SO."""
@@ -96,6 +147,21 @@ VRP (R) software, Version {{ os_version }} ({{ model | ORPHRASE }})
 HUAWEI {{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
 Patch Version: {{ patch_version }}
 Hardware Model       : {{ hardware_model | ORPHRASE }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="info">
+Cisco IOS XE Software, Version {{ os_version }}
+Cisco IOS Software [{{ os_family }}], {{ model | ORPHRASE }} Software ({{ image }}), Version {{ os_version }}, RELEASE SOFTWARE
+{{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
+cisco {{ hardware_model | ORPHRASE }} processor with {{ memory }} bytes of memory.
+Processor board ID {{ serial_number }}
+</group>
+<group name="info">
+Cisco IOS XE Software, Version {{ os_version }}
+</group>
+<group name="info">
+Cisco IOS Software, Version {{ os_version }}
 </group>
 """
 
@@ -123,6 +189,16 @@ Hardware Model       : {{ hardware_model | ORPHRASE }}
 {{ chassis_slot }} {{ model }} {{ status }}
 </group>
 """
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="info">
+NAME: "{{ name }}", DESCR: "{{ description | ORPHRASE }}"
+PID: {{ model }} , VID: {{ vid }} , SN: {{ serial_number }}
+</group>
+<group name="info">
+NAME: "{{ name }}", DESCR: "{{ description | ORPHRASE }}"
+PID: {{ model }} , VID: {{ vid }}
+</group>
+"""
 
     elif action == "get_system_uptime":
         if "dmos" in vos or "datacom" in vos:
@@ -136,6 +212,11 @@ System Uptime : {{ uptime_str | ORPHRASE }}
         elif "vrp" in vos or "huawei" in vos:
             return """<group name="info">
 HUAWEI {{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="info">
+{{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
 </group>
 """
 
@@ -162,6 +243,11 @@ HUAWEI {{ hostname }} uptime is {{ uptime_str | ORPHRASE }}
 {{ name }} {{ ip_address }} {{ admin_status }} {{ oper_status }} {{ vpn }}
 </group>
 """
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="interfaces">
+{{ name }} {{ ip_address }} {{ ok }} {{ method }} {{ admin_status }} {{ oper_status }}
+</group>
+"""
 
     elif action == "get_interface_detail":
         if "dmos" in vos or "datacom" in vos:
@@ -186,6 +272,53 @@ Hardware address is {{ mac_address }}
 Last link flapped: {{ last_flapped | ORPHRASE }}
   {{ in_errors | DIGIT }} input errors, {{ in_crc_errors | DIGIT }} CRC errors
   {{ out_errors | DIGIT }} output errors, {{ in_discards | DIGIT }} discards
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="detail">
+{{ name }} is {{ admin_status }}, line protocol is {{ oper_status }}
+  Hardware is {{ hardware | ORPHRASE }}, address is {{ mac_address }}
+  Description: {{ description | ORPHRASE }}
+  MTU {{ mtu | DIGIT }} bytes, BW {{ speed_bps | DIGIT }} Kbit/sec
+     {{ in_errors | DIGIT }} input errors, {{ in_crc_errors | DIGIT }} CRC,
+     {{ out_errors | DIGIT }} output errors,
+</group>
+"""
+
+    elif action == "get_l3_interfaces":
+        if "cisco" in vos or "ios" in vos:
+            return """<group name="interfaces">
+{{ name }} {{ ip_address }} {{ ok }} {{ method }} {{ status }} {{ protocol }}
+</group>
+"""
+        elif "dmos" in vos or "datacom" in vos:
+            return """<group name="interfaces">
+{{ name }} {{ ip_address }} {{ status }} {{ protocol }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="interfaces">
+{{ name }} {{ ip_address }} {{ status }} {{ protocol }}
+</group>
+"""
+
+    elif action == "get_vlans":
+        if "cisco" in vos or "ios" in vos:
+            return """<group name="vlans">
+{{ vlan_id | DIGIT }} {{ name }} {{ status }} {{ ports | ORPHRASE }}
+</group>
+<group name="vlans">
+{{ vlan_id | DIGIT }} {{ name }} {{ status }}
+</group>
+"""
+        elif "dmos" in vos or "datacom" in vos:
+            return """<group name="vlans">
+{{ vlan_id | DIGIT }} {{ name }} {{ status }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="vlans">
+{{ vlan_id | DIGIT }} {{ status }} {{ type }} {{ ports | ORPHRASE }}
 </group>
 """
 
@@ -283,8 +416,14 @@ aaa user {{ username }}
 """
         elif "cisco" in vos or "ios" in vos:
             return """<group name="users" default="N/A">
+username {{ username }} privilege {{ privilege_level }} secret {{ secret_type | DIGIT }} {{ password_hash }}
 username {{ username }} privilege {{ privilege_level }} secret {{ password_hash }}
+username {{ username }} secret {{ secret_type | DIGIT }} {{ password_hash }}
 username {{ username }} secret {{ password_hash }}
+username {{ username }} privilege {{ privilege_level }} password {{ secret_type | DIGIT }} {{ password_hash }}
+username {{ username }} privilege {{ privilege_level }} password {{ password_hash }}
+username {{ username }} password {{ secret_type | DIGIT }} {{ password_hash }}
+username {{ username }} password {{ password_hash }}
 </group>
 """
 
@@ -319,36 +458,77 @@ username {{ username }} secret {{ password_hash }}
 
     elif action == "get_ospf_neighbors":
         if "dmos" in vos or "datacom" in vos:
-            return """<group name="neighbors">
-{{ router_id }} {{ priority | DIGIT }} {{ state }} {{ dr_state }} {{ address }} {{ local_interface }}
-</group>
-<group name="neighbors">
-{{ router_id }} {{ priority | DIGIT }} {{ state }} {{ dead_time }} {{ address }} {{ local_interface }}
+            return """<group name="neighbors*">
+{{ router_id | IP }} {{ priority | DIGIT }} {{ state }} {{ interface_state }} {{ address | IP }} {{ local_interface | ORPHRASE }}
 </group>
 """
         elif "vrp" in vos or "huawei" in vos:
-            return """<group name="neighbors">
+            return """<group name="neighbors*">
  {{ area }} {{ local_interface }} {{ router_id }} {{ state }}
 </group>
-<group name="neighbors">
+<group name="neighbors*">
  Area {{ area }} interface {{ local_ip }}({{ local_interface }})'s neighbors
  Router ID: {{ router_id }} Address: {{ address }}
 </group>
 """
-    elif action == "get_vpws_groups":
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="neighbors*">
+{{ router_id | IP }} {{ priority | DIGIT }} {{ state }} {{ dead_time }} {{ address | IP }} {{ local_interface }}
+</group>
+"""
+
+    elif action == "get_ospf_status":
         if "dmos" in vos or "datacom" in vos:
-            return """<group name="vpws_records">
-{{ line | _line_ | exclude('---') | exclude('VPWS-Group') | exclude('Oper') }}
+            return """<group name="processes">
+Routing-process: {{ process_id }};
+Version: {{ version }}; Router-ID: {{ router_id }}; {{ ignore }} Area border router: {{ area_border_router }}; Autonomous system border router: {{ as_border_router }};
+</group>
+<group name="processes">
+{{ router_id | IP }} {{ version | DIGIT }} {{ admin_status }} {{ oper_status }} {{ process_id | DIGIT }}
 </group>
 """
         elif "vrp" in vos or "huawei" in vos:
-            return """<group name="vpws_records">
-{{ line | _line_ | exclude('---') | exclude('display') | exclude('Total') }}
+            return """<group name="processes">
+ OSPF Process {{ process_id }} with Router ID {{ router_id }}
 </group>
 """
         elif "cisco" in vos or "ios" in vos:
-            return """<group name="vpws_records">
-{{ line | _line_ | exclude('---') | exclude('Legend') }}
+            return """<group name="processes">
+ Routing Process "{{ ignore }} {{ process_id }}" with ID {{ router_id }}
+</group>
+"""
+
+    elif action == "get_ospf_interfaces":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="interfaces*">
+{{ name | ORPHRASE }} {{ area | IP }} {{ address | IP }} {{ interface_state }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="interfaces*">
+{{ name }} {{ address | IP }} {{ area }} {{ state }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="interfaces*">
+{{ name }} {{ interface_state }} {{ address | PREFIX }} {{ area | DIGIT }}
+</group>
+"""
+
+    elif action == "get_vpws_groups":
+        if "dmos" in vos or "datacom" in vos:
+            return """<group name="pseudowires*">
+{{ group }} {{ name }} {{ oper_status }} {{ access_interface }} {{ access_oper_status }} {{ neighbor | IP }} {{ pw_id | DIGIT }} {{ pw_oper_status }} {{ redundancy_role }} {{ redundancy_state }}
+</group>
+"""
+        elif "vrp" in vos or "huawei" in vos:
+            return """<group name="pseudowires*">
+{{ name }} {{ neighbor | IP }} {{ pw_id | DIGIT }} {{ oper_status }} {{ access_interface }}
+</group>
+"""
+        elif "cisco" in vos or "ios" in vos:
+            return """<group name="pseudowires*">
+{{ group }} {{ name }} {{ oper_status }} {{ access_interface }} {{ neighbor }} {{ pw_id }}
 </group>
 """
 
@@ -360,13 +540,17 @@ username {{ username }} secret {{ password_hash }}
 # TTP HYBRID ENGINE & WORKFLOW ORCHESTRATOR
 # -------------------------------------------------------------------------
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
 class TTPHybridEngine:
     """Motor de Parsing Híbrido com cache Tier 1, auto-cura Tier 2 e validação Tier 3."""
 
-    def __init__(self, template_dir: str = "storage/templates", normalized_storage_dir: str = "storage/normalized"):
-        self.template_dir = Path(template_dir)
+    def __init__(self, template_dir: Optional[str] = None, normalized_storage_dir: Optional[str] = None):
+        base_storage = os.getenv("NETOPS_STORAGE_DIR", str(PROJECT_ROOT / "storage"))
+        self.template_dir = Path(template_dir or (Path(base_storage) / "templates"))
         self.template_dir.mkdir(parents=True, exist_ok=True)
-        self.normalized_storage_dir = Path(normalized_storage_dir)
+        self.normalized_storage_dir = Path(normalized_storage_dir or (Path(base_storage) / "normalized"))
         self.normalized_storage_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_template_path(self, action: str, vendor_os: str, version: str) -> Path:
@@ -409,7 +593,7 @@ class TTPHybridEngine:
                 flat = flat[0]
 
             if isinstance(flat, dict):
-                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "aggregations", "users", "sessions", "vpws_records", "vpws", "groups", "data"):
+                for group_key in ("interfaces", "detail", "info", "peers", "neighbors", "processes", "aggregations", "users", "sessions", "pseudowires", "vlans", "vpws_records", "vpws", "groups", "data"):
                     if group_key in flat:
                         val = flat[group_key]
                         return val if isinstance(val, list) else [val]
@@ -438,7 +622,33 @@ class TTPHybridEngine:
         """
         vendor_os = f"{vendor}_{os_family}"
         template_file = self._get_template_path(action, vendor_os, version)
-        schema_cls = ACTION_SCHEMA_MAP.get(action)
+        schema_cls = self._get_schema_cls(action)
+
+        # -----------------------------------------------------------------
+        # TIER 0: ZERO-STATE NORMALIZER (TABELA VAZIA / PROCESSO INATIVO)
+        # -----------------------------------------------------------------
+        if is_empty_or_no_records_output(raw_stdout, action):
+            normalized = self._normalize_records([], action, vendor, os_family, version, device_hostname)
+            if schema_cls:
+                try:
+                    validated = schema_cls.model_validate(normalized)
+                    data_dump = validated.model_dump()
+                    json_file = self.save_normalized_json(device_hostname, action, data_dump)
+                    return {
+                        "tier": "Tier 1: Zero-State Normalizer (Tabela Vazia / Sem Registros)",
+                        "cache_hit": True,
+                        "json_path": str(json_file.resolve()),
+                        "data": data_dump
+                    }
+                except ValidationError:
+                    pass
+            json_file = self.save_normalized_json(device_hostname, action, normalized)
+            return {
+                "tier": "Tier 1: Zero-State Normalizer (Tabela Vazia / Sem Registros)",
+                "cache_hit": True,
+                "json_path": str(json_file.resolve()),
+                "data": normalized
+            }
 
         # -----------------------------------------------------------------
         # TIER 1: FAST-PATH DETERMINÍSTICO (CACHE HIT < 5ms)
@@ -572,6 +782,16 @@ REGRAS ESTREITAS:
         # Fallback para template built-in canônico
         return get_builtin_ttp_template(action, vendor_os)
 
+    def _get_schema_cls(self, action: str) -> Optional[Type[BaseModel]]:
+        """Recupera o schema Pydantic dinamicamente do registry atualizado."""
+        try:
+            import importlib
+            import mcp_server.schemas.registry
+            importlib.reload(mcp_server.schemas.registry)
+            return mcp_server.schemas.registry.get_schema_for_action(action)
+        except Exception:
+            return ACTION_SCHEMA_MAP.get(action)
+
     def _normalize_records(
         self,
         records: List[Dict[str, Any]],
@@ -582,12 +802,26 @@ REGRAS ESTREITAS:
         device_hostname: str
     ) -> Dict[str, Any]:
         """Converte dicionários brutos do TTP no payload esperado pelo schema OpenConfig via pipeline modular."""
-        return normalize_records_pipeline(
-            records=records,
-            action=action,
-            vendor=vendor,
-            os_family=os_family,
-            version=version,
-            device_hostname=device_hostname
-        )
+        try:
+            import importlib
+            import mcp_server.normalizers.registry
+            importlib.reload(mcp_server.normalizers.registry)
+            return mcp_server.normalizers.registry.normalize_records_pipeline(
+                records=records,
+                action=action,
+                vendor=vendor,
+                os_family=os_family,
+                version=version,
+                device_hostname=device_hostname
+            )
+        except Exception:
+            return normalize_records_pipeline(
+                records=records,
+                action=action,
+                vendor=vendor,
+                os_family=os_family,
+                version=version,
+                device_hostname=device_hostname
+            )
+
 

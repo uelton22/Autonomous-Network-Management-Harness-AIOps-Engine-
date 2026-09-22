@@ -60,21 +60,36 @@ Diante de qualquer comando ou pergunta do operador humano no chat, siga obrigato
 ```
 
 ### Passo a Passo Detalhado:
-1. **Identificar se é Ação Atômica ou Workflow DAG**:
-   - Se for uma verificação simples (ex: "Qual a versão do switch Datacom?"), execute a ação atômica `get_system_version`.
-   - Se for verificação de vizinhos (ex: "Quais os vizinhos LLDP?"), execute a ação atômica `get_lldp_neighbors`.
+
+0. **Perguntas de Consulta de Comandos e Sintaxe (Dúvidas do Operador)**:
+   - Se o operador perguntar sobre sintaxes, comandos ou como executar algo em um fabricante (ex: *"Qual o comando Cisco para..."*, *"Pesquise comandos de archive no Cisco"*, *"Como ver sessões no Huawei?"*), ou se solicitar uma ação em um switch que **NÃO conste em `actions.yaml`**:
+   - **VOCÊ DEVE IMEDIATAMENTE** acionar a ferramenta `search_command_reference(vendor="cisco|datacom|huawei", query="<termo>")`.
+   - **É TERMINANTEMENTE PROIBIDO** responder que o comando não existe ou desistir dizendo que "não está em actions.yaml". O catálogo `actions.yaml` possui apenas as ações automatizadas do Harness; a documentação oficial completa com centenas de comandos reside em `command_reference/` (Cisco IOS em `command_reference/cisco/`, Datacom em `command_reference/datacom/` e Huawei em `command_reference/huawei/`).
+   - Apresente no chat os comandos encontrados com Nome, Sintaxe, Modo (`Privileged EXEC`, `Global Config`, etc.) e Descrição.
+
+1. **Identificar se é Ação Atômica Catalogada ou Ação Ad-hoc**:
+   - Se for uma ação catalogada (ex: `get_system_version`, `get_system_users`, `get_lldp_neighbors`), execute `run_canonical_action`.
    - Se for uma auditoria com dependência (ex: "Audite as interfaces com erro"), execute o workflow `diagnose_down_interfaces`.
-2. **Definir o Nível de Privilégio & Briefing Prévia**:
+   - Se a intenção **NÃO estiver em `actions.yaml`**:
+     1. Pesquise a sintaxe exata no manual via `search_command_reference(vendor, query)`.
+     2. Execute via `run_adhoc_action(host, command, action_name)` para capturar o dado com TTP determinístico e isolamento de `.raw`.
+     3. Para perenizar o recurso no sistema, ative a skill [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md) para cadastrar a nova action multi-versão em `actions.yaml`.
+
+2. **Definir o Nível de Privilégio & Briefing Prévio**:
    - Sempre utilize `privilege_level="read"` por padrão. Todas as coletas e probes devem ser feitas via ferramentas MCP (`execute_command`, `run_canonical_action`).
    - É terminantemente **proibido** rodar scripts Python inline (`python -c ...`) no terminal via `run_command` para tentar contornar privilégios ou regras do Gatekeeper.
    - Se for estritamente necessária uma ação `editor` ou `full` (ou uso do terminal), emita obrigatoriamente um alerta prévio no chat em português detalhando Host, Privilégio, Comandos e Justificativa antes de disparar a ação que acionará o modal de aprovação nativo da IDE.
-3. **Consultar `registry/actions.yaml`**:
+
+3. **Consultar `registry/actions.yaml` ou `command_reference/`**:
    - Obtenha a sintaxe real do comando conforme a família do SO.
    - **Atenção especial com Datacom**: Jamais adivinhe sintaxe Cisco para caixas Datacom. Consulte sempre a Vendor Skill `skills/network-vendor-datacom/SKILL.md` e o catálogo `actions.yaml`.
+   - **Atenção especial com Cisco**: A documentação oficial de comandos reside diretamente na pasta `command_reference/cisco/` (com 613 comandos de IOS catalogados e normalizados em JSONL).
+
 4. **Acionar o Servidor MCP com TTP Obrigatório**:
    - **Comandos Catalogados**: Invoque `run_canonical_action(host, action, privilege_level)` ou `run_workflow_dag`.
-   - **Comandos Não Catalogados / Ad-Hoc / Novos Recursos**: Se a intenção não existir em `actions.yaml`, consulte o manual em `command_reference/` via `search_command_reference(vendor, query)` e ative a skill [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md). Valide o comando com probe via `execute_command`, gere o schema unificado OpenConfig e registre a ação em `actions.yaml` com hierarquia multi-versão.
+   - **Comandos Não Catalogados / Ad-Hoc**: Invoque `run_adhoc_action(host, command, action_name)` após obter a sintaxe via `search_command_reference`.
    - **NÃO use `execute_command` para coletas de dados finais**: `execute_command` serve unicamente para testes de baixo nível/probe de sintaxe; coletas reais devem sempre retornar dados estruturados via `run_canonical_action` ou `run_adhoc_action`.
+
 5. **Apresentar a Resposta**:
    - Baseie-se exclusivamente nos dados canônicos normalizados em JSON OpenConfig retornados pela tool e persistidos em `storage/normalized/`.
    - Apresente tabelas claras e conclusões objetivas para o operador. NUNCA tente ler o arquivo `.raw` no olho humano.
@@ -88,7 +103,8 @@ Antes de agir, você deve aderir às diretrizes contidas na pasta `rules/`:
 - [`rules/03-raw-data-handling.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/03-raw-data-handling.md): Arquivos `.raw` gravados em disco e isolados de prompts gigantes.
 - [`rules/04-dag-orchestration.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/04-dag-orchestration.md): Encadeamento de ações atômicas com filtros em código local.
 - [`rules/05-openconfig-norms.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/05-openconfig-norms.md): Padrões de mapeamento e neutralidade para schemas OpenConfig.
-- [`rules/06-chat-commands.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/06-chat-commands.md): Atendimento imediato a comandos de chat (/profiles, /actions, /vault, /help).
+- [`rules/06-chat-commands.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/06-chat-commands.md): Atendimento imediato a comandos de chat (/profiles, /actions, /vault, /help, /cisco, /datacom, /huawei).
+- [`rules/07-configuration-lifecycle.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/rules/07-configuration-lifecycle.md): Ciclo de vida de configurações (Inspect-Before-Alter, parâmetros obrigatórios, detecção de erros da CLI e auditoria).
 
 ---
 

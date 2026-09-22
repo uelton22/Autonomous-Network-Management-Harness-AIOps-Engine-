@@ -1,50 +1,61 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "OpenConfigSystemUsers",
-  "description": "Schema canônico unificado para contas de usuários locais configuradas no sistema (openconfig-system/aaa)",
+  "description": "Schema canônico unificado para contas de usuários locais e privilégios do sistema de rede",
   "type": "object",
-  "required": ["device", "users"],
+  "required": ["users"],
   "properties": {
     "device": {
       "type": "string",
-      "description": "Hostname ou IP do equipamento"
+      "description": "Identificador do equipamento ou hostname"
     },
     "collected_at": {
       "type": "string",
-      "description": "Timestamp ISO da coleta"
+      "description": "Timestamp ISO 8601 da coleta dos dados"
     },
     "summary": {
       "type": "object",
       "properties": {
-        "total_users": { "type": "integer" }
+        "total_users": {
+          "type": "integer",
+          "description": "Quantidade total de usuários locais identificados"
+        },
+        "admin_users": {
+          "type": "integer",
+          "description": "Quantidade de usuários com privilégio de administrador"
+        }
       }
     },
     "users": {
       "type": "array",
-      "description": "Lista de usuários configurados no equipamento",
+      "description": "Lista de usuários configurados no sistema",
       "items": {
         "type": "object",
         "required": ["username"],
         "properties": {
           "username": {
             "type": "string",
-            "description": "Nome de usuário da conta de acesso"
-          },
-          "group": {
-            "type": "string",
-            "description": "Grupo ou perfil de privilégio (ex: admin, config, audit)"
+            "description": "Nome da conta de usuário"
           },
           "role": {
             "type": "string",
-            "description": "Função ou nível de permissão canônico"
+            "description": "Papel ou nível de privilégio textual (ex: admin, operator, guest)"
+          },
+          "privilege_level": {
+            "type": "integer",
+            "description": "Nível numérico de privilégio do usuário (ex: 15 para Cisco admin, 1 para user)"
+          },
+          "group": {
+            "type": "string",
+            "description": "Grupo ou perfil atribuído ao usuário"
           },
           "authentication_type": {
             "type": "string",
-            "description": "Tipo de autenticação (ex: local, radius, tacacs)"
+            "description": "Tipo de autenticação ou hash (ex: secret, password, algorithm-type)"
           },
           "password_configured": {
             "type": "boolean",
-            "description": "Indica se há senha ou hash de credencial configurado"
+            "description": "Indica se existe senha ou hash configurado para o usuário"
           }
         }
       }
