@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenConfigInterfaces",
+  "description": "Schema canônico unificado para resumo e status de interfaces de rede (openconfig-interfaces)",
+  "type": "object",
+  "required": ["interfaces"],
+  "properties": {
+    "device": {
+      "type": "string",
+      "description": "Identificador do equipamento ou hostname"
+    },
+    "collected_at": {
+      "type": "string",
+      "description": "Timestamp ISO 8601 da coleta dos dados"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total_interfaces": {
+          "type": "integer",
+          "description": "Quantidade total de interfaces encontradas"
+        },
+        "up_interfaces": {
+          "type": "integer",
+          "description": "Quantidade de interfaces com oper_status UP"
+        },
+        "down_interfaces": {
+          "type": "integer",
+          "description": "Quantidade de interfaces com oper_status DOWN ou administratively down"
+        }
+      }
+    },
+    "interfaces": {
+      "type": "array",
+      "description": "Lista de interfaces de rede e seus respectivos estados",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nome da interface (ex: GigabitEthernet1/0/1, Eth-Trunk1, 1/1/1)"
+          },
+          "ip_address": {
+            "type": "string",
+            "description": "Endereço IPv4 configurado ou unassigned"
+          },
+          "admin_status": {
+            "type": "string",
+            "enum": ["UP", "DOWN", "TESTING", "UNKNOWN"],
+            "description": "Status administrativo da porta (UP ou DOWN)"
+          },
+          "oper_status": {
+            "type": "string",
+            "enum": ["UP", "DOWN", "TESTING", "UNKNOWN", "DORMANT", "NOT_PRESENT", "LOWER_LAYER_DOWN"],
+            "description": "Status operacional do protocolo de enlace"
+          },
+          "method": {
+            "type": "string",
+            "description": "Método de atribuição do IP (NVRAM, manual, DHCP, unset)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descrição textual atribuída à interface"
+          }
+        }
+      }
+    }
+  }
+}

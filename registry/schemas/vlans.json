@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenConfigVlans",
+  "description": "Schema canônico unificado para VLANs (openconfig-vlan)",
+  "type": "object",
+  "required": ["vlans"],
+  "properties": {
+    "device": {
+      "type": "string",
+      "description": "Identificador do equipamento ou hostname"
+    },
+    "collected_at": {
+      "type": "string",
+      "description": "Timestamp ISO 8601 da coleta dos dados"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total_vlans": {
+          "type": "integer",
+          "description": "Quantidade total de VLANs configuradas"
+        },
+        "active_vlans": {
+          "type": "integer",
+          "description": "Quantidade de VLANs no estado ativo"
+        }
+      }
+    },
+    "vlans": {
+      "type": "array",
+      "description": "Lista de VLANs configuradas no switch",
+      "items": {
+        "type": "object",
+        "required": ["vlan_id", "name"],
+        "properties": {
+          "vlan_id": {
+            "type": "integer",
+            "description": "Identificador numérico da VLAN (1-4094)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nome descritivo da VLAN"
+          },
+          "status": {
+            "type": "string",
+            "description": "Status operacional da VLAN (active, act/lshut, suspended)"
+          },
+          "ports": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Lista de interfaces associadas à VLAN"
+          }
+        }
+      }
+    }
+  }
+}

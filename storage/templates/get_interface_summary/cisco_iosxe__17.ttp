@@ -1,0 +1,3 @@
+<group name="interfaces">
+{{ name }} {{ ip_address }} {{ ok }} {{ method }} {{ admin_status }} {{ oper_status }}
+</group>

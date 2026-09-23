@@ -9,6 +9,8 @@ from typing import List, Dict, Any
 
 from mcp_server.normalizers.device_info import normalize_device_info
 from mcp_server.normalizers.users import normalize_system_users
+from mcp_server.normalizers.interfaces import normalize_interfaces_summary
+from mcp_server.normalizers.vlans import normalize_vlans
 from mcp_server.normalizers.generic import GenericOpenConfigNormalizer
 
 
@@ -26,6 +28,12 @@ def normalize_records_pipeline(
 
     if action == "get_system_users":
         return normalize_system_users(records, vendor, os_family, version, device_hostname)
+
+    if action in ("get_interface_summary", "get_interface_detail"):
+        return normalize_interfaces_summary(records, vendor, os_family, version, device_hostname)
+
+    if action == "get_vlans":
+        return normalize_vlans(records, vendor, os_family, version, device_hostname)
 
     # Fallback Declarativo para novas ações dinâmicas
     return GenericOpenConfigNormalizer.normalize(action, records, device_hostname)

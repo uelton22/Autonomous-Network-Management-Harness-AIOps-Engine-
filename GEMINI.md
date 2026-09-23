@@ -46,5 +46,14 @@ Sempre que o operador digitar no chat comandos iniciados por barra (`/`), respon
      b) **Parâmetros Obrigatórios**: Se faltar senha, máscara ou grupo, consulte o manual e pergunte ao operador no chat. Nunca invente dados padrão.
      c) **Execução em Bloco**: Comandos são enviados em sessão única com análise de erro da CLI (`%`, `Error:`).
      d) **Auditoria Transacional**: Toda mutação gera um registro em `storage/audit_log/` com `audit_id` auditável.
+7. **Expansão Contínua do Catálogo (Síntese Autônoma de Ações)**:
+   - Se o operador pedir uma coleta de dados (ex: interfaces, vlans, rotas, bgp) e a ação **NÃO existir em `registry/actions.yaml`**:
+   - É **TERMINANTEMENTE PROIBIDO** responder apenas com `run_adhoc_action` sem criar os arquivos do sistema.
+   - Você DEVE OBRIGATORIAMENTE executar o ciclo completo da skill `action-schema-architect`:
+     1. Criar o schema declarativo em `registry/schemas/<recurso>.json`.
+     2. Criar o modelo Pydantic modular em `mcp_server/schemas/<recurso>.py` e registrar em `mcp_server/schemas/registry.py`.
+     3. Criar o normalizador especialista em `mcp_server/normalizers/<recurso>.py` e registrar em `mcp_server/normalizers/registry.py`.
+     4. Cadastrar a ação atômica multi-versão em `registry/actions.yaml`.
+     5. Executar a ação via `run_canonical_action` com validação de tipos Tier 3.
 
 

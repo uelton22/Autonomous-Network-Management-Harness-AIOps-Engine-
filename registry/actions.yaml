@@ -114,6 +114,54 @@ atomic_actions:
         command: "show running-config | include username"
         clean_pager: "terminal length 0"
 
+  get_interface_summary:
+    description: "Coleta resumo operacional e status IP de todas as interfaces físicas e lógicas"
+    schema: "registry/schemas/interfaces.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos_12:
+        command: "show interface brief"
+        clean_pager: "terminal length 0"
+      datacom_dmos:
+        command: "show interface brief"
+        clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display ip interface brief"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp:
+        command: "display ip interface brief"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe_17:
+        command: "show ip interface brief"
+        clean_pager: "terminal length 0"
+      cisco_iosxe:
+        command: "show ip interface brief"
+        clean_pager: "terminal length 0"
+
+  get_vlans:
+    description: "Coleta mapeamento de VLANs, nomes, status operacionais e portas associadas"
+    schema: "registry/schemas/vlans.json"
+    privilege: "read"
+    platforms:
+      datacom_dmos_12:
+        command: "show vlan"
+        clean_pager: "terminal length 0"
+      datacom_dmos:
+        command: "show vlan"
+        clean_pager: "terminal length 0"
+      huawei_vrp_v200:
+        command: "display vlan"
+        clean_pager: "screen-length 0 temporary"
+      huawei_vrp:
+        command: "display vlan"
+        clean_pager: "screen-length 0 temporary"
+      cisco_iosxe_17:
+        command: "show vlan brief"
+        clean_pager: "terminal length 0"
+      cisco_iosxe:
+        command: "show vlan brief"
+        clean_pager: "terminal length 0"
+
 
 # -------------------------------------------------------------------------
 # WORKFLOWS ORQUESTRADOS (DAGs de Comandos Dependentes e Agregação Canônica)

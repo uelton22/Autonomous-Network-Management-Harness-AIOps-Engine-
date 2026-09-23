@@ -11,6 +11,8 @@ from pydantic import BaseModel
 
 from mcp_server.schemas.device_info import DeviceInfoSchema
 from mcp_server.schemas.system_users import SystemUsersSchema
+from mcp_server.schemas.interfaces import InterfacesSchema
+from mcp_server.schemas.vlans import VlansSchema
 
 
 ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
@@ -18,6 +20,9 @@ ACTION_SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
     "get_hardware_model": DeviceInfoSchema,
     "get_system_uptime": DeviceInfoSchema,
     "get_system_users": SystemUsersSchema,
+    "get_interface_summary": InterfacesSchema,
+    "get_interface_detail": InterfacesSchema,
+    "get_vlans": VlansSchema,
 }
 
 

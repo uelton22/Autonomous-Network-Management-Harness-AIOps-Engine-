@@ -67,13 +67,18 @@ Diante de qualquer comando ou pergunta do operador humano no chat, siga obrigato
    - **É TERMINANTEMENTE PROIBIDO** responder que o comando não existe ou desistir dizendo que "não está em actions.yaml". O catálogo `actions.yaml` possui apenas as ações automatizadas do Harness; a documentação oficial completa com centenas de comandos reside em `command_reference/` (Cisco IOS em `command_reference/cisco/`, Datacom em `command_reference/datacom/` e Huawei em `command_reference/huawei/`).
    - Apresente no chat os comandos encontrados com Nome, Sintaxe, Modo (`Privileged EXEC`, `Global Config`, etc.) e Descrição.
 
-1. **Identificar se é Ação Atômica Catalogada ou Ação Ad-hoc**:
-   - Se for uma ação catalogada (ex: `get_system_version`, `get_system_users`, `get_lldp_neighbors`), execute `run_canonical_action`.
+1. **Identificar se é Ação Atômica Catalogada ou Nova Ação Requerida**:
+   - Se for uma ação catalogada (ex: `get_system_version`, `get_system_users`), execute `run_canonical_action`.
    - Se for uma auditoria com dependência (ex: "Audite as interfaces com erro"), execute o workflow `diagnose_down_interfaces`.
-   - Se a intenção **NÃO estiver em `actions.yaml`**:
-     1. Pesquise a sintaxe exata no manual via `search_command_reference(vendor, query)`.
-     2. Execute via `run_adhoc_action(host, command, action_name)` para capturar o dado com TTP determinístico e isolamento de `.raw`.
-     3. Para perenizar o recurso no sistema, ative a skill [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md) para cadastrar a nova action multi-versão em `actions.yaml`.
+   - **Se a intenção NÃO estiver em `actions.yaml` (NOVA AÇÃO SOLICITADA PELO OPERADOR)**:
+     > [!IMPORTANT]
+     > **PROIBIDO PARAR EM RUN_ADHOC_ACTION**: `run_adhoc_action` serve unicamente para testes de probe isolados. Toda nova consulta solicitada pelo usuário no chat DEVE expandir o sistema executando **obrigatoriamente o ciclo completo** da skill [`skills/action-schema-architect/SKILL.md`](file:///Users/uelton/Documents/Desenvolvimento/web2026/LLM_ssh_project/skills/action-schema-architect/SKILL.md):
+     > 1. Consultar a sintaxe no manual via `search_command_reference(vendor, query)`.
+     > 2. Criar o schema declarativo em `registry/schemas/<recurso>.json`.
+     > 3. Criar o modelo Pydantic modular em `mcp_server/schemas/<recurso>.py` e registrar em `mcp_server/schemas/registry.py`.
+     > 4. Criar o normalizador especialista em `mcp_server/normalizers/<recurso>.py` e registrar em `mcp_server/normalizers/registry.py`.
+     > 5. Cadastrar a nova ação atômica multi-versão em `registry/actions.yaml` (com plataformas Datacom, Huawei e Cisco).
+     > 6. Executar a ação final via `run_canonical_action(host, action, credential_profile=...)` com validação Tier 3 Pydantic.
 
 2. **Definir o Nível de Privilégio & Briefing Prévio**:
    - Sempre utilize `privilege_level="read"` por padrão. Todas as coletas e probes devem ser feitas via ferramentas MCP (`execute_command`, `run_canonical_action`).
